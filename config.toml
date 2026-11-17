@@ -1,0 +1,16 @@
+# PayOps Sentinel runtime configuration. Paths are relative to this file.
+[app]
+environment = "local-demo"
+data_classification = "SYNTHETIC_DEMO"
+
+[storage]
+db_path = "data/payops.db"
+
+[ingestion]
+employer_code = "NORTHSTAR"
+ruleset_version = "2026.10-demo"
+max_file_bytes = 5000000
+max_rows = 10000
+
+[reference_data]
+dir = "data/synthetic"

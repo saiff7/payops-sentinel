@@ -1,0 +1,18 @@
+{
+  "ruleset_version": "2026.10-demo",
+  "data_classification": "SYNTHETIC_DEMO",
+  "rules": [
+    {
+      "rule_id": "RULE-DEFERRAL-PCT-V1",
+      "plan_id": "PLAN-401K-A",
+      "rule_code": "EMPLOYEE_DEFERRAL_PCT",
+      "version": "1",
+      "effective_from": "2026-01-01",
+      "effective_to": null,
+      "rounding": "ROUND_HALF_UP",
+      "tolerance_cents": 1,
+      "description": "Employee deferral = eligible compensation x elected rate, rounded half-up to the cent; differences up to 1 cent are tolerated. Demonstration rule only, not a regulatory calculation.",
+      "source_reference": "Synthetic Northstar plan configuration, section 3.1 (demo)"
+    }
+  ]
+}

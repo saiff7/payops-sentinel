@@ -1,0 +1,100 @@
+{
+  "ruleset_version": "2026.10-demo",
+  "payroll_clean.csv": {
+    "total_rows": 39,
+    "valid_rows": 39,
+    "invalid_rows": 0,
+    "exceptions": []
+  },
+  "payroll_with_exceptions.csv": {
+    "total_rows": 43,
+    "valid_rows": 37,
+    "invalid_rows": 6,
+    "exceptions": [
+      {
+        "source_row_number": 6,
+        "employee_ref": "EMP-0005",
+        "exception_type": "MISSING_CONTRIBUTION",
+        "reason_code": "CONTRIBUTION_ZERO_OR_BLANK",
+        "expected_cents": 62993,
+        "actual_cents": 0
+      },
+      {
+        "source_row_number": 9,
+        "employee_ref": "EMP-0008",
+        "exception_type": "INCORRECT_CONTRIBUTION_RATE",
+        "reason_code": "CONTRIBUTION_RATE_MISMATCH",
+        "expected_cents": 30547,
+        "actual_cents": 15273
+      },
+      {
+        "source_row_number": 13,
+        "employee_ref": "EMP-0012",
+        "exception_type": "INCORRECT_CONTRIBUTION_RATE",
+        "reason_code": "CONTRIBUTION_RATE_MISMATCH",
+        "expected_cents": 36314,
+        "actual_cents": 36316
+      },
+      {
+        "source_row_number": 18,
+        "employee_ref": "EMP-0017",
+        "exception_type": "MISSING_CONTRIBUTION",
+        "reason_code": "CONTRIBUTION_ZERO_OR_BLANK",
+        "expected_cents": 20000,
+        "actual_cents": 0
+      },
+      {
+        "source_row_number": 22,
+        "employee_ref": "EMP-0021",
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "NEGATIVE_AMOUNT"
+      },
+      {
+        "source_row_number": 24,
+        "employee_ref": "EMP-0023",
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "MALFORMED_DATE"
+      },
+      {
+        "source_row_number": 25,
+        "employee_ref": "EMP-0024",
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "MALFORMED_AMOUNT"
+      },
+      {
+        "source_row_number": 34,
+        "employee_ref": "EMP-0034",
+        "exception_type": "INCORRECT_CONTRIBUTION_RATE",
+        "reason_code": "NO_ACTIVE_ENROLLMENT",
+        "expected_cents": 0,
+        "actual_cents": 10000
+      },
+      {
+        "source_row_number": 41,
+        "employee_ref": "EMP-0031",
+        "exception_type": "CONTRIBUTION_AFTER_TERMINATION",
+        "reason_code": "PERIOD_STARTS_AFTER_TERMINATION",
+        "expected_cents": null,
+        "actual_cents": 16000
+      },
+      {
+        "source_row_number": 42,
+        "employee_ref": "EMP-0020",
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "DUPLICATE_ROW"
+      },
+      {
+        "source_row_number": 43,
+        "employee_ref": null,
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "MALFORMED_EMPLOYEE_REF"
+      },
+      {
+        "source_row_number": 44,
+        "employee_ref": "EMP-0999",
+        "exception_type": "DUPLICATE_OR_INVALID_RECORD",
+        "reason_code": "UNKNOWN_PARTICIPANT"
+      }
+    ]
+  }
+}
