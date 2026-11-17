@@ -17,6 +17,7 @@ from payops_sentinel.domain.models import (
     RowError,
 )
 from payops_sentinel.ingestion.csv_loader import RawRow
+from payops_sentinel.redaction import find_restricted
 
 ALLOWED_COLUMNS: tuple[str, ...] = (
     "employee_ref",
@@ -247,7 +248,20 @@ def batch_pay_period(parsed: Iterable[ParsedRow]) -> tuple[date, date] | None:
     return next(iter(periods), None)
 
 
+def reject_restricted_content(raw_rows: list[RawRow]) -> None:
+    """Header checks cannot catch personal data typed into allowed columns; scan every cell."""
+    for raw in raw_rows:
+        for value in (raw.values or {}).values():
+            found = find_restricted(value)
+            if found:
+                raise FileRejectedError(
+                    FileRejectionCode.RESTRICTED_CONTENT,
+                    f"row {raw.source_row_number} contains restricted data ({', '.join(found)})",
+                )
+
+
 def validate_rows(raw_rows: list[RawRow], known_refs: set[str]) -> list[ParsedRow]:
+    reject_restricted_content(raw_rows)
     parsed = _mark_duplicates([_parse_row(r, known_refs) for r in raw_rows])
     batch_pay_period(parsed)
     return parsed

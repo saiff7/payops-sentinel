@@ -5,6 +5,7 @@ data_classification = "SYNTHETIC_DEMO"
 
 [storage]
 db_path = "data/payops.db"
+artifacts_dir = "data/artifacts"
 
 [ingestion]
 employer_code = "NORTHSTAR"

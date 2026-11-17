@@ -54,6 +54,7 @@ from payops_sentinel.config import PROJECT_ROOT, Settings
 from payops_sentinel.domain.enums import ExceptionStatus
 from payops_sentinel.domain.models import EXCEPTION_ID_PATTERN
 from payops_sentinel.hashing import canonical_json, sha256_hex
+from payops_sentinel.review.audit import AuditEventType, append_event
 from payops_sentinel.storage import repositories as repo
 from payops_sentinel.storage.db import connect, initialize, transaction
 
@@ -352,6 +353,21 @@ class InvestigationOrchestrator:
                     run.exception_id,
                     ExceptionStatus.UNDER_INVESTIGATION if draft else ExceptionStatus.MANUAL_REVIEW,
                 )
+            append_event(
+                self.conn,
+                actor_id=AGENT_PRINCIPAL,
+                event_type=AuditEventType.INVESTIGATION_COMPLETED,
+                object_id=run.exception_id,
+                payload={
+                    "run_id": run_id,
+                    "status": status.value,
+                    "failure_category": category.value if category else None,
+                    "draft_id": draft_ref[0] if draft_ref else None,
+                    "content_hash": draft_ref[2] if draft_ref else None,
+                    "model_version": model_version,
+                    "prompt_version": prompts.PROMPT_VERSION,
+                },
+            )
         log.info(
             "investigation_finished run_id=%s exception_id=%s status=%s category=%s "
             "model_tool_calls=%d duration_ms=%d",

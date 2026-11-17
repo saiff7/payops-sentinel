@@ -601,3 +601,198 @@ def list_drafts(conn: sqlite3.Connection, exception_id: str) -> list[dict[str, A
             (exception_id,),
         )
     ]
+
+
+# ------------------------------------------------------------------ audit chain
+
+GENESIS_HASH = "0" * 64
+
+
+def last_audit_hash(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+    ).fetchone()
+    return row["event_hash"] if row else GENESIS_HASH
+
+
+def insert_audit_event(
+    conn: sqlite3.Connection,
+    *,
+    event_id: str,
+    actor_id: str,
+    event_type: str,
+    object_id: str,
+    payload_json: str,
+    previous_hash: str,
+    event_hash: str,
+    created_at: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO audit_events (event_id, actor_id, event_type, object_id, payload_json, "
+        "previous_hash, event_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            event_id,
+            actor_id,
+            event_type,
+            object_id,
+            payload_json,
+            previous_hash,
+            event_hash,
+            created_at,
+        ),
+    )
+
+
+def list_audit_events(
+    conn: sqlite3.Connection, *, object_ids: list[str] | None = None, limit: int = 1000
+) -> list[dict[str, Any]]:
+    if object_ids is None:
+        rows = conn.execute("SELECT * FROM audit_events ORDER BY sequence LIMIT ?", (limit,))
+    else:
+        marks = ",".join("?" * len(object_ids)) or "NULL"
+        rows = conn.execute(
+            f"SELECT * FROM audit_events WHERE object_id IN ({marks}) "  # noqa: S608 (placeholders)
+            "ORDER BY sequence LIMIT ?",
+            (*object_ids, limit),
+        )
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------ draft versions and approvals
+
+
+def get_draft(conn: sqlite3.Connection, draft_id: str, version: int) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM drafts WHERE draft_id = ? AND draft_version = ?", (draft_id, version)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def latest_draft_version(conn: sqlite3.Connection, draft_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM drafts WHERE draft_id = ? ORDER BY draft_version DESC LIMIT 1", (draft_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def insert_draft_version(
+    conn: sqlite3.Connection,
+    *,
+    draft_id: str,
+    version: int,
+    exception_id: str,
+    run_id: str | None,
+    author_id: str,
+    draft: dict[str, Any],
+) -> str:
+    body = canonical_json(draft)
+    content_hash = sha256_hex(body)
+    conn.execute(
+        "INSERT INTO drafts (draft_id, draft_version, exception_id, run_id, author_id, "
+        "draft_json, content_hash, status, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)",
+        (draft_id, version, exception_id, run_id, author_id, body, content_hash, utc_now()),
+    )
+    return content_hash
+
+
+def set_draft_status(conn: sqlite3.Connection, draft_id: str, version: int, status: str) -> None:
+    conn.execute(
+        "UPDATE drafts SET status = ? WHERE draft_id = ? AND draft_version = ?",
+        (status, draft_id, version),
+    )
+
+
+def insert_approval(
+    conn: sqlite3.Connection,
+    *,
+    draft_id: str,
+    version: int,
+    reviewer_id: str,
+    action: str,
+    comment: str | None,
+    content_hash: str,
+) -> tuple[str, str]:
+    approval_id = next_id(conn, "APR")
+    created_at = utc_now()
+    conn.execute(
+        "INSERT INTO approvals (approval_id, draft_id, draft_version, reviewer_id, action, "
+        "comment, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (approval_id, draft_id, version, reviewer_id, action, comment, content_hash, created_at),
+    )
+    return approval_id, created_at
+
+
+def list_approvals(conn: sqlite3.Connection, draft_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM approvals WHERE draft_id = ? ORDER BY created_at", (draft_id,)
+        )
+    ]
+
+
+def list_agent_runs(conn: sqlite3.Connection, exception_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM agent_runs WHERE exception_id = ? ORDER BY started_at DESC, run_id DESC",
+            (exception_id,),
+        )
+    ]
+
+
+# ------------------------------------------------------------------ operational metrics
+
+
+def batch_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT COUNT(*) AS batches, COALESCE(SUM(total_rows), 0) AS rows_processed, "
+        "COALESCE(SUM(invalid_rows), 0) AS rows_rejected, "
+        "COALESCE(SUM(exception_count), 0) AS exceptions, "
+        "COALESCE(AVG(duration_ms), 0) AS avg_duration_ms FROM payroll_batches"
+    ).fetchone()
+    return dict(row)
+
+
+def agent_run_metrics(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT status, COALESCE(error_category, '-') AS error_category, COUNT(*) AS runs, "
+            "CAST(AVG(duration_ms) AS INTEGER) AS avg_duration_ms FROM agent_runs "
+            "GROUP BY status, error_category ORDER BY status, runs DESC"
+        )
+    ]
+
+
+def tool_metrics(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT tool_name, actor, COUNT(*) AS calls, SUM(1 - success) AS failures, "
+            "CAST(AVG(duration_ms) AS INTEGER) AS avg_duration_ms FROM tool_events "
+            "GROUP BY tool_name, actor ORDER BY calls DESC"
+        )
+    ]
+
+
+def review_metrics(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Status of the latest version of each draft, with the oldest item's creation time."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT d.status, COUNT(*) AS drafts, MIN(d.created_at) AS oldest_created_at "
+            "FROM drafts d JOIN (SELECT draft_id, MAX(draft_version) AS v FROM drafts "
+            "GROUP BY draft_id) latest "
+            "ON latest.draft_id = d.draft_id AND latest.v = d.draft_version "
+            "GROUP BY d.status ORDER BY d.status"
+        )
+    ]
+
+
+def json_loads(value: str) -> dict[str, Any]:
+    loaded = json.loads(value)
+    if not isinstance(loaded, dict):
+        raise ValueError("expected a JSON object")
+    return loaded

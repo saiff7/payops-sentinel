@@ -52,6 +52,7 @@ class Settings(BaseModel):
 
     environment: str = "local-demo"
     db_path: Path
+    artifacts_dir: Path = PROJECT_ROOT / "data" / "artifacts"
     reference_data_dir: Path
     employer_code: str
     ruleset_version: str
@@ -73,6 +74,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
     return Settings(
         environment=raw["app"]["environment"],
         db_path=base / raw["storage"]["db_path"],
+        artifacts_dir=base / raw["storage"].get("artifacts_dir", "data/artifacts"),
         reference_data_dir=base / raw["reference_data"]["dir"],
         employer_code=ingestion["employer_code"],
         ruleset_version=ingestion["ruleset_version"],

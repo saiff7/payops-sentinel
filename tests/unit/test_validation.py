@@ -154,7 +154,7 @@ def test_rejection_message_does_not_echo_untrusted_header_text(make_csv):
         (("EMP-0001", "NaN", "0.05"), ReasonCode.MALFORMED_AMOUNT),
         (("EMP-0001", "", "0.05"), ReasonCode.MISSING_VALUE),
         (("EMP-17A", "1.00", "0.05"), ReasonCode.MALFORMED_EMPLOYEE_REF),
-        (("123-45-6789", "1.00", "0.05"), ReasonCode.MALFORMED_EMPLOYEE_REF),
+        (("EMP 0001", "1.00", "0.05"), ReasonCode.MALFORMED_EMPLOYEE_REF),
         (("EMP-0001' OR 1=1--", "1.00", "0.05"), ReasonCode.MALFORMED_EMPLOYEE_REF),
         (("EMP-0999", "1.00", "0.05"), ReasonCode.UNKNOWN_PARTICIPANT),
     ],
@@ -191,8 +191,8 @@ def test_duplicate_rows_second_occurrence_invalid(make_csv, row):
 
 
 def test_invalid_values_are_not_kept_in_sanitized_output(make_csv, row):
-    parsed = _validate(make_csv(row("123-45-6789", '"1,000.00"', "0.05")))
+    parsed = _validate(make_csv(row("EMP-17A", '"1,000.00"', "0.05")))
     assert "employee_ref" not in parsed[0].sanitized
     assert "eligible_comp_cents" not in parsed[0].sanitized
     assert parsed[0].sanitized["contribution_cents"] == 5
-    assert all("123-45-6789" not in e.message for e in parsed[0].errors)
+    assert all("EMP-17A" not in e.message for e in parsed[0].errors)

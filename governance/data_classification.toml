@@ -1,0 +1,33 @@
+# Data classification for PayOps Sentinel. All demonstration data is SYNTHETIC_DEMO.
+
+[classifications.PUBLIC]
+examples = ["project documentation", "published tool descriptions"]
+treatment = "displayable"
+
+[classifications.INTERNAL]
+examples = ["operational configuration", "system metrics", "agent run telemetry"]
+treatment = "application access only"
+
+[classifications.CONFIDENTIAL]
+examples = ["payroll amounts", "participant-linked records", "evidence snapshots", "drafts"]
+treatment = "synthetic examples only; minimal fields sent to the local model; never logged"
+
+[classifications.RESTRICTED]
+examples = ["SSNs", "dates of birth", "names", "personal email", "addresses", "bank and routing numbers", "credentials"]
+treatment = "not accepted or stored: restricted headers and cell content reject the whole file; reviewer edits containing them are refused"
+
+[dataset]
+data_classification = "SYNTHETIC_DEMO"
+
+[fields]
+"payroll_upload.employee_ref" = "CONFIDENTIAL"          # synthetic alias EMP-NNNN only
+"payroll_upload.pay_period_start" = "CONFIDENTIAL"
+"payroll_upload.pay_period_end" = "CONFIDENTIAL"
+"payroll_upload.eligible_compensation" = "CONFIDENTIAL"
+"payroll_upload.employee_contribution" = "CONFIDENTIAL"
+"evidence.snapshot_json" = "CONFIDENTIAL"
+"drafts.draft_json" = "CONFIDENTIAL"
+"tool_events.arguments_json" = "INTERNAL"              # identifiers only, no amounts
+"agent_runs" = "INTERNAL"
+"audit_events" = "INTERNAL"
+"agent_assets" = "INTERNAL"

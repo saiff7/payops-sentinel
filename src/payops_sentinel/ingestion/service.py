@@ -8,11 +8,16 @@ import time
 
 from payops_sentinel.config import Settings
 from payops_sentinel.domain.enums import BatchStatus
-from payops_sentinel.domain.models import ConfigurationError, IngestionResult
+from payops_sentinel.domain.models import (
+    ConfigurationError,
+    FileRejectedError,
+    IngestionResult,
+)
 from payops_sentinel.hashing import sha256_hex
 from payops_sentinel.ingestion.csv_loader import load_csv
 from payops_sentinel.ingestion.validator import batch_pay_period, validate_headers, validate_rows
 from payops_sentinel.reconciliation.engine import reconcile
+from payops_sentinel.review.audit import AuditEventType, append_event
 from payops_sentinel.storage import repositories as repo
 from payops_sentinel.storage.db import transaction
 
@@ -41,6 +46,7 @@ def ingest_payroll_file(
     file_name: str,
     employer_code: str | None = None,
     ruleset_version: str | None = None,
+    actor_id: str = "system",
 ) -> IngestionResult:
     """Process one uploaded payroll file.
 
@@ -63,12 +69,23 @@ def ingest_payroll_file(
         log.info("batch_duplicate_submission batch_id=%s", existing)
         return _existing_result(conn, existing)
 
-    headers, raw_rows = load_csv(
-        content, max_bytes=settings.max_file_bytes, max_rows=settings.max_rows
-    )
-    validate_headers(headers)
     ref = repo.load_reference_data(conn, employer.employer_id, ruleset_version)
-    parsed = validate_rows(raw_rows, known_refs=set(ref.participants))
+    try:
+        headers, raw_rows = load_csv(
+            content, max_bytes=settings.max_file_bytes, max_rows=settings.max_rows
+        )
+        validate_headers(headers)
+        parsed = validate_rows(raw_rows, known_refs=set(ref.participants))
+    except FileRejectedError as exc:
+        with transaction(conn):  # record the refusal; the file content itself is not stored
+            append_event(
+                conn,
+                actor_id=actor_id,
+                event_type=AuditEventType.BATCH_REJECTED,
+                object_id=f"file:{file_sha[:16]}",
+                payload={"file_sha256": file_sha, "code": exc.code.value},
+            )
+        raise
 
     started = time.perf_counter()
     try:
@@ -88,6 +105,19 @@ def ingest_payroll_file(
                 repo.insert_exception(conn, batch_id, row_ids[f.source_row_number], f)
             valid = sum(1 for p in parsed if p.is_valid)
             duration_ms = int((time.perf_counter() - started) * 1000)
+            append_event(
+                conn,
+                actor_id=actor_id,
+                event_type=AuditEventType.BATCH_INGESTED,
+                object_id=batch_id,
+                payload={
+                    "file_sha256": file_sha,
+                    "ruleset_version": ruleset_version,
+                    "rows": len(parsed),
+                    "valid_rows": valid,
+                    "exceptions": len(findings),
+                },
+            )
             repo.finalize_batch(
                 conn,
                 batch_id,

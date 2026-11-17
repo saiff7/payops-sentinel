@@ -1,0 +1,54 @@
+"""Every Streamlit page renders, and the demo workflow can be clicked through (no Ollama)."""
+
+from __future__ import annotations
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+from payops_sentinel.config import PROJECT_ROOT
+
+UI = PROJECT_ROOT / "src" / "payops_sentinel" / "ui"
+PAGES = ["app.py", "pages/1_Batches.py", "pages/2_Exceptions.py", "pages/3_Governance.py"]
+
+
+@pytest.fixture
+def ui_config(tmp_path, monkeypatch):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        (PROJECT_ROOT / "config.toml")
+        .read_text()
+        .replace('db_path = "data/payops.db"', f'db_path = "{tmp_path / "ui.db"}"')
+        .replace('artifacts_dir = "data/artifacts"', f'artifacts_dir = "{tmp_path / "art"}"')
+        .replace('dir = "data/synthetic"', f'dir = "{PROJECT_ROOT / "data" / "synthetic"}"')
+        .replace('"governance/', f'"{PROJECT_ROOT / "governance"}/')
+    )
+    monkeypatch.setenv("PAYOPS_CONFIG", str(config))
+    return tmp_path
+
+
+def _run(page: str, **state) -> AppTest:
+    at = AppTest.from_file(str(UI / page), default_timeout=30)
+    for key, value in state.items():
+        at.session_state[key] = value
+    return at.run()
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_pages_render_on_empty_database(ui_config, page):
+    at = _run(page)
+    assert not at.exception, at.exception
+
+
+def test_operator_processes_demo_batch_then_pages_render(ui_config):
+    at = _run("pages/1_Batches.py", principal_id="operator.demo")
+    next(b for b in at.button if b.label == "Process demo file with exceptions").click().run()
+    assert not at.exception
+    assert any("BATCH-000001 processed" in s.value for s in at.success)
+    for page in PAGES[2:]:
+        assert not _run(page, principal_id="reviewer.demo").exception
+
+
+def test_viewer_upload_is_refused(ui_config):
+    at = _run("pages/1_Batches.py", principal_id="viewer.demo")
+    next(b for b in at.button if b.label == "Process clean demo file").click().run()
+    assert any("cannot upload" in e.value for e in at.error)

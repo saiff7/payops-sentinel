@@ -63,7 +63,7 @@ uv run payops investigate EXC-000004      # real agent run: Qwen3 + separate MCP
 uv run pytest -q                          # all tests (no Ollama needed; fake model)
 uv run pytest -m ollama -q                # opt-in live tests against local qwen3:8b
 uv run ruff check . && uv run ruff format --check . && uv lock --check
-uv run streamlit run src/payops_sentinel/ui/app.py      # Phase 3+
+uv run streamlit run src/payops_sentinel/ui/app.py      # UI (auto-creates DB + reference data)
 ```
 
 Done = focused tests → full suite → ruff check + format check all pass.
@@ -94,6 +94,23 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
 - Expected tool errors raise `ToolError` (message reaches model); crashes are masked by the SDK.
 - Schema is v2; pre-release DBs are not migrated: `rm data/payops.db && uv run payops init`.
 
+## Key Phase 3 rules
+
+- Review actions only via `review/service.py` (`edit_draft`, `approve_draft`, `reject_draft`,
+  `approved_artifact`). Each takes a `Principal`, draft id + version + content hash; stale,
+  superseded, non-pending or hash-mismatched drafts raise `StaleDraftError`.
+- Roles (`ROLE_PERMISSIONS`): agent=draft.create only; operator=upload+investigate;
+  reviewer=investigate+edit/approve/reject/download; viewer=read. Denials are audited.
+  Identity is simulated (`DEMO_PRINCIPALS`); production = OIDC + central RBAC.
+- Edits create a new version (author=reviewer) and mark the old one `superseded`; approval approves
+  the communication only (exception status unchanged); rejection → exception `manual_review`.
+- Audit: `review/audit.append_event` must run inside a transaction; events for batch
+  ingested/rejected, investigation completed, draft edited/approved/rejected, artifact downloaded,
+  authorization denied. `verify_chain` detects altered and removed (non-tail) events.
+- Restricted data (`redaction.py`): SSN/email/phone/card/routing patterns reject an upload
+  (`RESTRICTED_CONTENT`) or a reviewer edit/approval.
+- UI pages read via repositories and act only via services; `PAYOPS_CONFIG` overrides config path.
+
 ## Status
 
 - **Phase 0 (complete):** MCP SDK v2.3.0 API verified; plan in `docs/BUILD_PLAN.md`.
@@ -101,4 +118,7 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
   synthetic data generator, CLI, 92 tests passing, ruff clean.
 - **Phase 2 (complete):** MCP server (6 read-only tools), guarded Qwen3 agent loop, structured
   drafts, fail-closed fallback, run/tool-event persistence, `payops investigate`. 144 tests + 2 live.
-- **Next: Phase 3 — Streamlit app, review/approval service, audit chain** (awaiting go-ahead).
+- **Phase 3 (complete):** Streamlit app (Batches, Exceptions, Governance), review service with
+  role checks and versioned drafts, approved artifacts, hash-chained audit, restricted-content
+  safeguards, telemetry, readiness gate. 184 tests passing (+2 live Ollama).
+- **Next: Phase 4 — evaluation suite (30 cases), CI, docs/runbook/handover, README** (awaiting go-ahead).

@@ -1,6 +1,6 @@
 # PayOps Sentinel — Build Plan (Phase 0 output)
 
-Date: 2026-11-17 · Status: Phase 2 complete (144 tests + 2 live Ollama tests); Phase 3 not started.
+Date: 2026-11-17 · Status: Phase 3 complete (184 tests + 2 live Ollama tests); Phase 4 not started.
 
 ## 1. Repository and environment assessment
 
@@ -144,4 +144,18 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
   `not_found` and the run continues safely. Candidate fix for Phase 4, measured by evaluation:
   expose an explicit `rule_lookup` hint (or null) in `get_exception_details` and bump prompt version.
 - Live latency on M1 Max: ~25-60 s per investigation (5 model calls, first includes model load).
+
+## 9. Phase 3 notes and deviations
+
+- Added `operator` and `viewer` roles beside `reviewer` and the `agent` principal; reviewers may
+  also start investigations so a single reviewer can run the demo end to end.
+- A rejected upload stores no content, but an audit event records its SHA-256 and rejection code.
+- Content-level scan (`redaction.py`) now rejects whole files with SSN/email/phone/card patterns in
+  any cell (`RESTRICTED_CONTENT`), stricter than Phase 1's per-row format errors.
+- Artifacts are deterministic text files (`data/artifacts/DRF-…-vN-approved.txt`), rebuilt and
+  re-verified against the audited SHA-256 on every download.
+- Known limits: the hash chain cannot detect truncation of the most recent events without an
+  external anchor; no four-eyes rule (the editing reviewer may approve); identity is simulated.
+- UI verified with Streamlit AppTest (CI smoke tests) and a headless live run: upload → Qwen3
+  investigation → approve → artifact → audit chain verified (3 events).
 

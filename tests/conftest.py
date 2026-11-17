@@ -19,6 +19,7 @@ HEADER = "employee_ref,pay_period_start,pay_period_end,eligible_compensation,emp
 def settings(tmp_path: Path) -> Settings:
     return Settings(
         db_path=tmp_path / "test.db",
+        artifacts_dir=tmp_path / "artifacts",
         reference_data_dir=SYNTHETIC_DIR,
         employer_code="NORTHSTAR",
         ruleset_version="2026.10-demo",
@@ -78,3 +79,34 @@ def ingested(conn: sqlite3.Connection, settings: Settings):
 @pytest.fixture
 def manifest_path() -> Path:
     return MANIFEST_PATH
+
+
+VALID_DRAFT_BODY = (
+    "Hello, please verify the October 31, 2026 payroll entry for employee reference EMP-0017 "
+    "and provide clarification or a corrected record. Thank you."
+)
+
+
+@pytest.fixture
+def pending_draft(ingested, conn):
+    """Version 1 of an agent-authored draft for EXC-000004, pending review."""
+    from payops_sentinel.storage import repositories as repo
+    from payops_sentinel.storage.db import transaction
+
+    evidence_ids = repo.exception_details(conn, "EXC-000004")["evidence_ids"]
+    draft = {
+        "exception_id": "EXC-000004",
+        "investigation_summary": "Contribution is zero although an active 5% election exists.",
+        "evidence_ids": evidence_ids,
+        "reasoning_summary": "The payroll row shows $0.00 while the engine expected $200.00.",
+        "proposed_next_step": "REQUEST_CORRECTED_RECORD",
+        "email_subject": "Contribution record requiring review",
+        "email_body": VALID_DRAFT_BODY,
+        "limitations": [],
+        "requires_human_review": True,
+    }
+    with transaction(conn):
+        draft_id, version, content_hash = repo.insert_draft(
+            conn, exception_id="EXC-000004", run_id=None, author_id="agent_service", draft=draft
+        )
+    return {"draft_id": draft_id, "version": version, "content_hash": content_hash}
