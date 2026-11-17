@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 BUSY_TIMEOUT_MS = 5000
 
 
@@ -54,6 +54,9 @@ def initialize(conn: sqlite3.Connection) -> None:
     if version == SCHEMA_VERSION:
         return
     if version != 0:
-        raise RuntimeError(f"unsupported schema version {version}; expected {SCHEMA_VERSION}")
+        raise RuntimeError(
+            f"database schema v{version} is not v{SCHEMA_VERSION}; pre-release schemas are not "
+            "migrated: delete the local demo database and run `payops init`"
+        )
     script = files("payops_sentinel.storage").joinpath("schema.sql").read_text(encoding="utf-8")
     conn.executescript(f"BEGIN;\n{script}\nCOMMIT;")  # atomic: all tables or none

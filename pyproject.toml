@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Governed, local-first AI investigation of synthetic payroll contribution exceptions"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "mcp>=2,<3",
+    "ollama>=0.6,<1",
     "pydantic>=2,<3",
 ]
 
@@ -16,7 +18,7 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib -ra"
+addopts = "--import-mode=importlib -ra -m \"not ollama\""
 markers = ["ollama: requires a running local Ollama with the configured model (excluded in CI)"]
 
 [tool.ruff]

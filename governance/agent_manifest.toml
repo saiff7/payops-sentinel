@@ -1,0 +1,18 @@
+# Agent asset registry record. Owners must be real, named people; never invent identities.
+[asset]
+asset_id = "PAYOPS-AGENT-001"
+asset_name = "PayOps Sentinel Investigator"
+agent_version = "0.2.0"
+model = "qwen3:8b"
+model_digest = "recorded per run in agent_runs.model_version"
+prompt_version = "1.0.0"
+tools_version = "1.0.0"
+technical_owner = "Project maintainer (repository owner)"
+business_owner = "UNASSIGNED"
+backup_owner = "UNASSIGNED"
+environment = "local-demo"
+status = "active"
+release_status = "demo-not-production-ready"
+evaluation_status = "pending"
+data_classification = "SYNTHETIC_DEMO"
+runbook = "docs/runbook.md"

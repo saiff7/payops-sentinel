@@ -18,6 +18,10 @@ from payops_sentinel.domain.enums import (
 )
 
 EMPLOYEE_REF_PATTERN = r"^EMP-\d{4}$"
+BATCH_ID_PATTERN = r"^BATCH-\d{6}$"
+EXCEPTION_ID_PATTERN = r"^EXC-\d{6}$"
+EVIDENCE_ID_PATTERN = r"^EV-\d{6}$"
+CODE_PATTERN = r"^[A-Z0-9_-]{1,60}$"  # plan ids, rule codes, asset ids
 DEFERRAL_RULE_CODE = "EMPLOYEE_DEFERRAL_PCT"
 
 

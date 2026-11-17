@@ -14,3 +14,19 @@ max_rows = 10000
 
 [reference_data]
 dir = "data/synthetic"
+
+[agent]
+# Local Ollama only: cloud models and non-local hosts are rejected at load time.
+model = "qwen3:8b"
+ollama_host = "http://127.0.0.1:11434"
+request_timeout_s = 180
+temperature = 0.0
+seed = 7
+max_iterations = 4        # model turns that may request tools
+max_tool_calls = 8        # total tool calls per investigation
+max_result_chars = 10000  # larger tool results are rejected, not truncated
+tool_timeout_s = 15
+max_draft_attempts = 2
+asset_id = "PAYOPS-AGENT-001"
+manifest_path = "governance/agent_manifest.toml"
+tool_permissions_path = "governance/tool_permissions.toml"

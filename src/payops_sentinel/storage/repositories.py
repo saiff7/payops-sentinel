@@ -397,3 +397,207 @@ def count_rows(conn: sqlite3.Connection, table: str) -> int:
     if table not in allowed:
         raise ValueError(f"table not countable: {table}")
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608 (allowlisted)
+
+
+# ------------------------------------------------------------------ read models for MCP tools
+
+
+def batch_summary(conn: sqlite3.Connection, batch_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT batch_id, pay_period_start, pay_period_end, total_rows, valid_rows, invalid_rows, "
+        "exception_count, status, ruleset_version, data_classification "
+        "FROM payroll_batches WHERE batch_id = ?",
+        (batch_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def query_exceptions(
+    conn: sqlite3.Connection,
+    batch_id: str,
+    *,
+    exception_type: str | None,
+    status: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT exception_id, employee_ref, exception_type, severity, status "
+            "FROM exceptions WHERE batch_id = ? "
+            "AND (? IS NULL OR exception_type = ?) AND (? IS NULL OR status = ?) "
+            "ORDER BY exception_id LIMIT ?",
+            (batch_id, exception_type, exception_type, status, status, limit),
+        )
+    ]
+
+
+def exception_details(conn: sqlite3.Connection, exception_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT e.exception_id, e.batch_id, e.employee_ref, e.pay_period_end, e.exception_type, "
+        "e.severity, e.status, e.reason_code, e.reason, e.expected_cents, e.actual_cents, "
+        "e.rule_id, r.source_row_number, b.pay_period_start, b.ruleset_version, "
+        "pr.plan_id, pr.rule_code "
+        "FROM exceptions e JOIN payroll_rows r ON r.row_id = e.row_id "
+        "JOIN payroll_batches b ON b.batch_id = e.batch_id "
+        "LEFT JOIN plan_rules pr ON pr.rule_id = e.rule_id WHERE e.exception_id = ?",
+        (exception_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    details = dict(row)
+    details["evidence_ids"] = [
+        r["evidence_id"]
+        for r in conn.execute(
+            "SELECT evidence_id FROM evidence WHERE exception_id = ? ORDER BY evidence_id",
+            (exception_id,),
+        )
+    ]
+    return details
+
+
+def find_rule(
+    conn: sqlite3.Connection,
+    *,
+    plan_id: str,
+    rule_code: str,
+    as_of: date,
+    ruleset_version: str | None,
+) -> ContributionRule | None:
+    row = conn.execute(
+        "SELECT * FROM plan_rules WHERE plan_id = ? AND rule_code = ? "
+        "AND (? IS NULL OR ruleset_version = ?) AND effective_from <= ? "
+        "AND (effective_to IS NULL OR effective_to >= ?) "
+        "ORDER BY effective_from DESC, ruleset_version DESC LIMIT 1",
+        (
+            plan_id,
+            rule_code,
+            ruleset_version,
+            ruleset_version,
+            as_of.isoformat(),
+            as_of.isoformat(),
+        ),
+    ).fetchone()
+    return _rule_from_row(row) if row else None
+
+
+# ------------------------------------------------------------------ agent runs
+
+
+def insert_agent_run(
+    conn: sqlite3.Connection,
+    *,
+    exception_id: str,
+    batch_id: str | None,
+    agent_version: str,
+    model_version: str,
+    prompt_version: str,
+) -> str:
+    run_id = next_id(conn, "RUN")
+    conn.execute(
+        "INSERT INTO agent_runs (run_id, batch_id, exception_id, agent_version, model_version, "
+        "prompt_version, status, started_at) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
+        (run_id, batch_id, exception_id, agent_version, model_version, prompt_version, utc_now()),
+    )
+    return run_id
+
+
+def finish_agent_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+    *,
+    status: str,
+    error_category: str | None,
+    error_detail: str | None,
+    tool_call_count: int,
+    duration_ms: int,
+) -> None:
+    conn.execute(
+        "UPDATE agent_runs SET status = ?, error_category = ?, error_detail = ?, "
+        "tool_call_count = ?, duration_ms = ? WHERE run_id = ?",
+        (status, error_category, error_detail, tool_call_count, duration_ms, run_id),
+    )
+
+
+def insert_tool_event(
+    conn: sqlite3.Connection,
+    run_id: str,
+    *,
+    sequence: int,
+    actor: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+    result_hash: str | None,
+    duration_ms: int,
+    success: bool,
+    error_category: str | None,
+) -> None:
+    conn.execute(
+        "INSERT INTO tool_events (run_id, sequence, actor, tool_name, arguments_json, "
+        "result_hash, duration_ms, success, error_category, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            sequence,
+            actor,
+            tool_name[:100],
+            canonical_json(arguments)[:2000],
+            result_hash,
+            duration_ms,
+            int(success),
+            error_category,
+            utc_now(),
+        ),
+    )
+
+
+def insert_draft(
+    conn: sqlite3.Connection,
+    *,
+    exception_id: str,
+    run_id: str | None,
+    author_id: str,
+    draft: dict[str, Any],
+) -> tuple[str, int, str]:
+    """Create version 1 of a new draft. Returns (draft_id, version, content_hash)."""
+    draft_id = next_id(conn, "DRF")
+    body = canonical_json(draft)
+    content_hash = sha256_hex(body)
+    conn.execute(
+        "INSERT INTO drafts (draft_id, draft_version, exception_id, run_id, author_id, "
+        "draft_json, content_hash, status, created_at) "
+        "VALUES (?, 1, ?, ?, ?, ?, ?, 'pending_review', ?)",
+        (draft_id, exception_id, run_id, author_id, body, content_hash, utc_now()),
+    )
+    return draft_id, 1, content_hash
+
+
+def set_exception_status(conn: sqlite3.Connection, exception_id: str, status: str) -> None:
+    conn.execute(
+        "UPDATE exceptions SET status = ? WHERE exception_id = ?",
+        (ExceptionStatus(status).value, exception_id),
+    )
+
+
+def get_agent_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM agent_runs WHERE run_id = ?", (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_tool_events(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM tool_events WHERE run_id = ? ORDER BY sequence", (run_id,)
+        )
+    ]
+
+
+def list_drafts(conn: sqlite3.Connection, exception_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM drafts WHERE exception_id = ? ORDER BY created_at, draft_version",
+            (exception_id,),
+        )
+    ]

@@ -59,7 +59,9 @@ uv run payops generate-data               # regenerate deterministic synthetic d
 uv run payops init                        # create data/payops.db and load reference data
 uv run payops ingest data/synthetic/payroll_with_exceptions.csv
 uv run payops show BATCH-000001 --evidence
-uv run pytest -q                          # all tests (no Ollama needed)
+uv run payops investigate EXC-000004      # real agent run: Qwen3 + separate MCP process
+uv run pytest -q                          # all tests (no Ollama needed; fake model)
+uv run pytest -m ollama -q                # opt-in live tests against local qwen3:8b
 uv run ruff check . && uv run ruff format --check . && uv lock --check
 uv run streamlit run src/payops_sentinel/ui/app.py      # Phase 3+
 ```
@@ -78,9 +80,25 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
 - Idempotency key: (employer_id, file_sha256, ruleset_version). Ingestion is one transaction.
 - IDs: `BATCH-000001`, `EXC-000001`, `EV-000001` from `id_sequences`.
 
+## Key Phase 2 rules
+
+- Ollama/Qwen3 never speaks MCP. `agent/orchestrator.py` bridges Ollama function calling to the
+  MCP `Client`; the server runs as `python -m payops_sentinel.mcp_server.server --db --manifest`.
+- Host enforcement (`agent/guardrails.py`): `ALLOWED_TOOLS` (must equal
+  `governance/tool_permissions.toml`), Pydantic arg models with `extra="forbid"`, iteration/call/
+  result-size limits from `config.toml [agent]`, repeated identical failure → stop.
+- Host fetches ground truth (actor `host`) to verify drafts: evidence IDs must belong to the
+  exception and have been returned to the model; `$` amounts and `EMP-` refs must appear in evidence.
+- Two-stage model use: tool loop (`think=False`, no format) then schema-constrained draft (no tools),
+  up to `max_draft_attempts`. Any failure → `manual_review`, run + tool events still recorded.
+- Expected tool errors raise `ToolError` (message reaches model); crashes are masked by the SDK.
+- Schema is v2; pre-release DBs are not migrated: `rm data/payops.db && uv run payops init`.
+
 ## Status
 
 - **Phase 0 (complete):** MCP SDK v2.3.0 API verified; plan in `docs/BUILD_PLAN.md`.
 - **Phase 1 (complete):** deterministic engine, SQLite schema (all tables incl. later phases),
   synthetic data generator, CLI, 92 tests passing, ruff clean.
-- **Next: Phase 2 — MCP server + agent** (awaiting explicit go-ahead). Needs Ollama + `qwen3:8b`.
+- **Phase 2 (complete):** MCP server (6 read-only tools), guarded Qwen3 agent loop, structured
+  drafts, fail-closed fallback, run/tool-event persistence, `payops investigate`. 144 tests + 2 live.
+- **Next: Phase 3 — Streamlit app, review/approval service, audit chain** (awaiting go-ahead).

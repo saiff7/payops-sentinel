@@ -1,6 +1,6 @@
 # PayOps Sentinel — Build Plan (Phase 0 output)
 
-Date: 2026-11-17 · Status: Phase 1 complete (92 tests passing); Phase 2 not started.
+Date: 2026-11-17 · Status: Phase 2 complete (144 tests + 2 live Ollama tests); Phase 3 not started.
 
 ## 1. Repository and environment assessment
 
@@ -129,3 +129,19 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
 - Files containing more than one pay period are rejected (`MIXED_PAY_PERIODS`).
 
 ## 7. Before Phase 2: install Ollama for macOS, then `ollama pull qwen3:8b`.
+
+## 8. Phase 2 notes and deviations
+
+- Schema v2: `agent_runs` gains `error_detail`, `tool_call_count`, status check; `tool_events`
+  gains `actor` (`model` | `host`). No migrations pre-release; recreate the demo DB.
+- `lookup_plan_rule` takes an optional `ruleset_version` (rules are unique per ruleset version).
+- The SDK passes HOME, LOGNAME, PATH, SHELL, USER to the stdio server; we add nothing else.
+- Host performs two verification reads per run (recorded as actor `host`, never shown to the
+  model) so draft checks rely on ground truth rather than the model's own tool use.
+- `evals/golden_cases.jsonl` holds 6 starter cases; Phase 4 extends to 30.
+- Observed live (qwen3:8b, temperature 0): for exceptions with no plan rule (after-termination,
+  duplicate) the model still calls `lookup_plan_rule` with invented arguments; the server returns
+  `not_found` and the run continues safely. Candidate fix for Phase 4, measured by evaluation:
+  expose an explicit `rule_lookup` hint (or null) in `get_exception_details` and bump prompt version.
+- Live latency on M1 Max: ~25-60 s per investigation (5 model calls, first includes model load).
+

@@ -59,3 +59,22 @@ def _row(
 def row() -> Callable[..., tuple[str, ...]]:
     """Build one CSV row tuple: row(ref, eligible_compensation, contribution, start=, end=)."""
     return _row
+
+
+MANIFEST_PATH = PROJECT_ROOT / "governance" / "agent_manifest.toml"
+
+
+@pytest.fixture
+def ingested(conn: sqlite3.Connection, settings: Settings):
+    """The database after processing the synthetic exceptions file (12 exceptions)."""
+    from payops_sentinel.ingestion.service import ingest_payroll_file
+
+    name = "payroll_with_exceptions.csv"
+    return ingest_payroll_file(
+        conn, settings, content=(SYNTHETIC_DIR / name).read_bytes(), file_name=name
+    )
+
+
+@pytest.fixture
+def manifest_path() -> Path:
+    return MANIFEST_PATH

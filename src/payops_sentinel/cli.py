@@ -95,6 +95,28 @@ def cmd_show(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_investigate(settings: Settings, args: argparse.Namespace) -> int:
+    from payops_sentinel.agent.orchestrator import run_investigation  # AI deps load lazily
+
+    outcome = run_investigation(settings, args.exception_id)
+    print(
+        f"{outcome.run_id} {outcome.exception_id}: {outcome.status.value} "
+        f"model={outcome.model_version} duration_ms={outcome.duration_ms}"
+    )
+    if outcome.failure_category:
+        print(f"  manual review: {outcome.failure_category.value} ({outcome.failure_detail})")
+    for c in outcome.tool_calls:
+        state = "ok" if c.success else f"FAILED {c.error_category}"
+        print(
+            f"  #{c.sequence} [{c.actor}] {c.tool_name}({json.dumps(c.arguments)}) {state} "
+            f"{c.duration_ms}ms"
+        )
+    if outcome.draft:
+        print(f"draft {outcome.draft_id} v{outcome.draft_version} sha256={outcome.content_hash}")
+        print(json.dumps(outcome.draft.model_dump(mode="json"), indent=2))
+    return 0 if outcome.draft else 4
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="payops", description=__doc__)
     parser.add_argument("--config", type=Path, default=None, help="path to config.toml")
@@ -106,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     p_show = sub.add_parser("show", help="show a batch and its exceptions")
     p_show.add_argument("batch_id")
     p_show.add_argument("--evidence", action="store_true")
+    p_inv = sub.add_parser("investigate", help="run the AI agent on one exception")
+    p_inv.add_argument("exception_id")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -113,12 +137,14 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = load_settings(args.config)
     handlers = {
         "generate-data": cmd_generate,
         "init": cmd_init,
         "ingest": cmd_ingest,
         "show": cmd_show,
+        "investigate": cmd_investigate,
     }
     return handlers[args.command](settings, args)
 

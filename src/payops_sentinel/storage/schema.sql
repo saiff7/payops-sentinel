@@ -1,4 +1,4 @@
--- PayOps Sentinel schema v1. Money = integer cents. Rates = basis points. Dates = ISO-8601 text.
+-- PayOps Sentinel schema v2. Money = integer cents. Rates = basis points. Dates = ISO-8601 text.
 -- All demonstration data is SYNTHETIC_DEMO.
 
 CREATE TABLE id_sequences (
@@ -129,22 +129,26 @@ CREATE INDEX ix_evidence_exception ON evidence(exception_id);
 
 -- ---------------------------------------------------------------- agent (Phase 2)
 CREATE TABLE agent_runs (
-    run_id          TEXT PRIMARY KEY,
-    batch_id        TEXT REFERENCES payroll_batches(batch_id),
-    exception_id    TEXT REFERENCES exceptions(exception_id),
-    agent_version   TEXT NOT NULL,
-    model_version   TEXT NOT NULL,
-    prompt_version  TEXT NOT NULL,
-    status          TEXT NOT NULL,
-    error_category  TEXT,
-    started_at      TEXT NOT NULL,
-    duration_ms     INTEGER
+    run_id           TEXT PRIMARY KEY,
+    batch_id         TEXT REFERENCES payroll_batches(batch_id),
+    exception_id     TEXT REFERENCES exceptions(exception_id),
+    agent_version    TEXT NOT NULL,
+    model_version    TEXT NOT NULL,
+    prompt_version   TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('running', 'draft_ready', 'manual_review')),
+    error_category   TEXT,
+    error_detail     TEXT,
+    tool_call_count  INTEGER NOT NULL DEFAULT 0,
+    started_at       TEXT NOT NULL,
+    duration_ms      INTEGER
 );
+CREATE INDEX ix_agent_runs_exception ON agent_runs(exception_id);
 
 CREATE TABLE tool_events (
     event_id        INTEGER PRIMARY KEY,
     run_id          TEXT NOT NULL REFERENCES agent_runs(run_id),
     sequence        INTEGER NOT NULL,
+    actor           TEXT NOT NULL CHECK (actor IN ('model', 'host')),
     tool_name       TEXT NOT NULL,
     arguments_json  TEXT NOT NULL,
     result_hash     TEXT,
@@ -259,4 +263,4 @@ CREATE TABLE evaluation_cases (
     PRIMARY KEY (evaluation_id, case_id)
 );
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

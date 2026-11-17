@@ -1,0 +1,38 @@
+# Governance record of what the agent principal may call. The enforcing allowlist lives in
+# src/payops_sentinel/agent/guardrails.py; tests assert the two are identical.
+# There is deliberately no write, approve, send, delete or payroll-change capability.
+[principal.agent_service]
+permission = "AGENT_READ_ONLY"
+tools = [
+  "get_batch_summary",
+  "list_exceptions",
+  "get_exception_details",
+  "get_exception_evidence",
+  "lookup_plan_rule",
+  "get_agent_asset",
+]
+can_generate_drafts = true
+can_edit_drafts = false
+can_approve_drafts = false
+can_reject_drafts = false
+can_send_email = false
+can_change_contributions = false
+can_delete_audit_events = false
+
+[principal.reviewer]
+permission = "REVIEWER"
+tools = [
+  "get_batch_summary",
+  "list_exceptions",
+  "get_exception_details",
+  "get_exception_evidence",
+  "lookup_plan_rule",
+  "get_agent_asset",
+]
+can_generate_drafts = false
+can_edit_drafts = true
+can_approve_drafts = true
+can_reject_drafts = true
+can_send_email = false
+can_change_contributions = false
+can_delete_audit_events = false
