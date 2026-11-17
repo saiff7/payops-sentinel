@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import sys
+import tempfile
 from pathlib import Path
 
 from payops_sentinel.config import PROJECT_ROOT, Settings, load_settings
@@ -117,6 +118,81 @@ def cmd_investigate(settings: Settings, args: argparse.Namespace) -> int:
     return 0 if outcome.draft else 4
 
 
+def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
+    from payops_sentinel.operations import evaluations as ev
+
+    dataset = PROJECT_ROOT / "evals" / "golden_cases.jsonl"
+    cases = ev.load_cases(dataset)
+    if args.cases:
+        wanted = set(args.cases.split(","))
+        cases = [c for c in cases if c.case_id in wanted]
+    reports_dir = Path(args.reports_dir)
+    previous = sorted(reports_dir.glob("EVAL-*.json"))
+
+    def progress(r) -> None:
+        mark = "PASS" if r.passed else "FAIL"
+        print(
+            f"  {r.case_id} {mark} {r.status:13} {r.duration_ms:>6}ms tools={r.model_tools} "
+            f"{'; '.join(r.notes)}",
+            flush=True,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="payops-eval-") as work:
+        report = ev.run_evaluation(
+            settings,
+            cases,
+            work_dir=Path(work),
+            dataset_sha256=ev.dataset_hash(dataset),
+            progress=progress,
+            partial=bool(args.cases),
+        )
+    conn = _open(settings)
+    path = ev.save_report(conn, report, reports_dir)
+    print(
+        f"{report.evaluation_id} model={report.model_version} prompt={report.prompt_version} "
+        f"tools={report.tools_version} release_gate={'PASSED' if report.passed else 'FAILED'}"
+    )
+    for name, value in report.metrics.items():
+        print(f"  {name:30} {value}")
+    print(f"report: {path}")
+    if previous:
+        cmp = ev.compare_reports(ev.load_report(previous[-1]), report)
+        print(
+            f"compared with {cmp.baseline_id}: regressions={cmp.regressions} "
+            f"newly_failing={cmp.newly_failing} newly_passing={cmp.newly_passing}"
+        )
+    return 0 if report.passed else 5
+
+
+def cmd_compare(settings: Settings, args: argparse.Namespace) -> int:
+    from payops_sentinel.operations import evaluations as ev
+
+    cmp = ev.compare_reports(
+        ev.load_report(Path(args.baseline)), ev.load_report(Path(args.candidate))
+    )
+    print(json.dumps(cmp.model_dump(), indent=2))
+    return 1 if cmp.regressions or cmp.newly_failing else 0
+
+
+def cmd_backup(settings: Settings, args: argparse.Namespace) -> int:
+    from payops_sentinel.storage.backup import backup_database, verify_database
+
+    dest = backup_database(settings.db_path, Path(args.destination))
+    check = verify_database(dest)
+    print(json.dumps(check.model_dump(), indent=2))
+    print(f"backup {'VERIFIED' if check.healthy else 'FAILED VERIFICATION'}: {dest}")
+    return 0 if check.healthy else 6
+
+
+def cmd_verify_db(settings: Settings, args: argparse.Namespace) -> int:
+    from payops_sentinel.storage.backup import verify_database
+
+    check = verify_database(Path(args.path) if args.path else settings.db_path)
+    print(json.dumps(check.model_dump(), indent=2))
+    print("HEALTHY" if check.healthy else "UNHEALTHY")
+    return 0 if check.healthy else 6
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="payops", description=__doc__)
     parser.add_argument("--config", type=Path, default=None, help="path to config.toml")
@@ -130,6 +206,16 @@ def main(argv: list[str] | None = None) -> int:
     p_show.add_argument("--evidence", action="store_true")
     p_inv = sub.add_parser("investigate", help="run the AI agent on one exception")
     p_inv.add_argument("exception_id")
+    p_eval = sub.add_parser("evaluate", help="run the golden-case agent evaluation (local model)")
+    p_eval.add_argument("--cases", help="comma-separated case ids (default: all)")
+    p_eval.add_argument("--reports-dir", default=str(PROJECT_ROOT / "evals" / "reports"))
+    p_cmp = sub.add_parser("eval-compare", help="compare two evaluation reports")
+    p_cmp.add_argument("baseline")
+    p_cmp.add_argument("candidate")
+    p_backup = sub.add_parser("backup", help="online SQLite backup + verification of the copy")
+    p_backup.add_argument("destination")
+    p_verify = sub.add_parser("verify-db", help="integrity, schema and audit-chain check")
+    p_verify.add_argument("path", nargs="?")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -145,6 +231,10 @@ def main(argv: list[str] | None = None) -> int:
         "ingest": cmd_ingest,
         "show": cmd_show,
         "investigate": cmd_investigate,
+        "evaluate": cmd_evaluate,
+        "eval-compare": cmd_compare,
+        "backup": cmd_backup,
+        "verify-db": cmd_verify_db,
     }
     return handlers[args.command](settings, args)
 

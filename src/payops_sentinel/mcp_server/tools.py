@@ -19,7 +19,7 @@ from payops_sentinel.domain.enums import ExceptionStatus, ExceptionType
 from payops_sentinel.operations.registry import AgentAsset
 from payops_sentinel.storage import repositories as repo
 
-TOOLS_VERSION = "1.0.0"
+TOOLS_VERSION = "1.1.0"  # 1.1.0: explicit rule_lookup in exception details
 AMOUNT_NOTE = (
     "Amounts are outputs of the deterministic reconciliation engine. Quote them as given; "
     "do not recalculate them."
@@ -60,6 +60,14 @@ class ExceptionList(_Out):
     count: int
 
 
+class RuleLookup(_Out):
+    """Exact lookup_plan_rule arguments for this exception's deterministic finding."""
+
+    plan_id: str
+    rule_code: str
+    as_of_date: str
+
+
 class ExceptionDetails(_Out):
     exception_id: str
     batch_id: str
@@ -79,6 +87,7 @@ class ExceptionDetails(_Out):
     rule_code: str | None
     ruleset_version: str
     evidence_ids: list[str]
+    rule_lookup: RuleLookup | None  # null: no plan rule applies, so do not look one up
     amount_note: str = AMOUNT_NOTE
 
 
@@ -186,6 +195,13 @@ def get_exception_details(conn: sqlite3.Connection, exception_id: str) -> Except
         rule_code=d["rule_code"],
         ruleset_version=d["ruleset_version"],
         evidence_ids=d["evidence_ids"],
+        rule_lookup=(
+            RuleLookup(
+                plan_id=d["plan_id"], rule_code=d["rule_code"], as_of_date=d["pay_period_end"]
+            )
+            if d["plan_id"] and d["rule_code"] and d["pay_period_end"]
+            else None
+        ),
     )
 
 

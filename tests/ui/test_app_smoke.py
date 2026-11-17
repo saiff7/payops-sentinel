@@ -52,3 +52,40 @@ def test_viewer_upload_is_refused(ui_config):
     at = _run("pages/1_Batches.py", principal_id="viewer.demo")
     next(b for b in at.button if b.label == "Process clean demo file").click().run()
     assert any("cannot upload" in e.value for e in at.error)
+
+
+def test_governance_shows_recorded_evaluations(ui_config):
+    from payops_sentinel.storage import repositories as repo
+    from payops_sentinel.storage.db import connect, initialize, transaction
+
+    conn = connect(ui_config / "ui.db")
+    initialize(conn)
+    metrics = {
+        "case_pass_rate": 0.5,
+        "tool_selection_accuracy": 0.5,
+        "schema_validity": 1.0,
+        "evidence_coverage": 1.0,
+        "latency_p95_ms": 61000.0,
+        "tool_argument_accuracy": 1.0,
+        "failed_model_tool_calls": 3.0,
+        "critical_security_violations": 0.0,
+    }
+    with transaction(conn):
+        repo.insert_evaluation_run(
+            conn,
+            {
+                "evaluation_id": "EVAL-TEST",
+                "model_version": "qwen3:8b@abc",
+                "agent_version": "x",
+                "prompt_version": "1.0.0",
+                "tools_version": "1.0.0",
+                "started_at": "2026-11-17",
+                "completed_at": "2026-11-17",
+                "metrics": metrics,
+                "passed": False,
+            },
+        )
+    conn.close()
+    at = _run("pages/3_Governance.py")
+    assert not at.exception
+    assert any("EVAL-TEST" in m.value for m in at.markdown)

@@ -76,6 +76,9 @@ class _Run:
     started: float = field(default_factory=time.perf_counter)
     calls: list[ToolCallRecord] = field(default_factory=list)
     model_call_count: int = 0
+    model_turns: int = 0
+    draft_attempts: int = 0
+    objective: str | None = None
     seen_evidence_ids: set[str] = field(default_factory=set)
     failures: Counter[str] = field(default_factory=Counter)
     batch_id: str | None = None
@@ -94,10 +97,13 @@ class InvestigationOrchestrator:
 
     # ------------------------------------------------------------------ public API
 
-    async def investigate(self, client: Client, exception_id: str) -> InvestigationOutcome:
+    async def investigate(
+        self, client: Client, exception_id: str, objective: str | None = None
+    ) -> InvestigationOutcome:
+        """Investigate one exception. ``objective`` overrides the default user request (evals)."""
         if not re.fullmatch(EXCEPTION_ID_PATTERN, exception_id):
             raise ValueError("exception_id must look like EXC-000001")
-        run = _Run(exception_id=exception_id)
+        run = _Run(exception_id=exception_id, objective=objective)
         model_version = self.model.model_name
         try:
             model_version = await anyio.to_thread.run_sync(self.model.describe)
@@ -150,9 +156,13 @@ class InvestigationOrchestrator:
     ) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": prompts.SYSTEM_PROMPT},
-            {"role": "user", "content": prompts.investigation_request(run.exception_id)},
+            {
+                "role": "user",
+                "content": run.objective or prompts.investigation_request(run.exception_id),
+            },
         ]
         for _ in range(self.limits.max_iterations):
+            run.model_turns += 1
             reply = await self._chat(messages, tools=tools)
             if not reply.tool_calls:
                 break
@@ -275,6 +285,7 @@ class InvestigationOrchestrator:
         messages.append({"role": "user", "content": prompts.drafting_instruction(run.exception_id)})
         last: tuple[FailureCategory, str] = (FailureCategory.INVALID_OUTPUT, "no draft produced")
         for _ in range(self.limits.max_draft_attempts):
+            run.draft_attempts += 1
             reply = await self._chat(messages, response_schema=schema)
             try:
                 draft = AgentInvestigationDraft.model_validate_json(reply.content)
@@ -390,6 +401,8 @@ class InvestigationOrchestrator:
             draft_version=draft_ref[1] if draft_ref else None,
             content_hash=draft_ref[2] if draft_ref else None,
             tool_calls=run.calls,
+            model_turns=run.model_turns,
+            draft_attempts=run.draft_attempts,
             duration_ms=duration_ms,
         )
 
@@ -423,20 +436,28 @@ def run_investigation(
     *,
     model: ChatModel | None = None,
     server: StdioServerParameters | None = None,
+    objective: str | None = None,
 ) -> InvestigationOutcome:
-    """Synchronous entry point used by the CLI and the UI."""
+    """Synchronous entry point used by the CLI, the UI and the evaluation harness."""
     conn = connect(settings.db_path)
     initialize(conn)
     orchestrator = InvestigationOrchestrator(
         model or OllamaChatModel(settings.agent), AgentLimits.from_settings(settings.agent), conn
     )
+    if not settings.agent.enabled:  # operational kill switch: deterministic queue stays usable
+        try:
+            return orchestrator.fail_closed(
+                exception_id, FailureCategory.AGENT_DISABLED, "agent disabled in config.toml"
+            )
+        finally:
+            conn.close()
     params = server or server_parameters(settings)
 
     async def _run() -> InvestigationOutcome:
         outcome: InvestigationOutcome | None = None
         try:
             async with Client(params, read_timeout_seconds=settings.agent.tool_timeout_s) as client:
-                outcome = await orchestrator.investigate(client, exception_id)
+                outcome = await orchestrator.investigate(client, exception_id, objective)
         except Exception as exc:  # the server process failed to start or crashed
             if outcome is not None:
                 return outcome

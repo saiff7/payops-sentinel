@@ -19,6 +19,7 @@ from mcp.types import ToolAnnotations
 from payops_sentinel.agent.guardrails import ALLOWED_TOOLS, AgentLimits
 from payops_sentinel.agent.ollama_client import ModelReply, ModelUnavailableError, ToolCallRequest
 from payops_sentinel.agent.orchestrator import InvestigationOrchestrator, run_investigation
+from payops_sentinel.agent.prompts import PROMPT_VERSION
 from payops_sentinel.agent.schemas import FailureCategory, InvestigationStatus
 from payops_sentinel.config import PROJECT_ROOT, AgentSettings
 from payops_sentinel.hashing import canonical_json, sha256_hex
@@ -145,7 +146,7 @@ def test_full_investigation_produces_validated_pending_draft(investigate, conn, 
     assert (run["status"], run["tool_call_count"], run["prompt_version"]) == (
         "draft_ready",
         3,
-        "1.0.0",
+        PROMPT_VERSION,
     )
     events = repo.list_tool_events(conn, out.run_id)
     assert [e["actor"] for e in events] == ["host", "host", "model", "model", "model"]
@@ -363,3 +364,14 @@ def test_configuration_rejects_cloud_models_and_remote_hosts(field, value):
 def test_draft_content_hash_is_canonical(investigate, conn, evidence_ids):
     out = investigate(FakeModel(*GATHER, draft_json(evidence_ids)))
     assert out.content_hash == sha256_hex(canonical_json(out.draft.model_dump(mode="json")))
+
+
+def test_kill_switch_routes_to_manual_review_without_model(ingested, conn, settings):
+    disabled = settings.model_copy(
+        update={"agent": settings.agent.model_copy(update={"enabled": False})}
+    )
+    model = FakeModel(unavailable=True)
+    out = run_investigation(disabled, EXC, model=model)
+    assert out.failure_category is FailureCategory.AGENT_DISABLED
+    assert model.calls == []
+    assert repo.exception_details(conn, EXC)["status"] == "manual_review"

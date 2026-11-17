@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Deterministic, integration, MCP, agent (scripted model), security, review, UI-smoke and
+    # evaluation-harness tests. Live Ollama tests (-m ollama) and real model evaluations run
+    # locally only; CI never downloads a model or calls a paid API.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.26"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Lockfile is current
+        run: uv lock --check
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Tests (no model required)
+        run: uv run pytest -q
+
+      - name: Synthetic data is reproducible
+        run: |
+          uv run payops generate-data
+          git diff --exit-code -- data/synthetic evals/expected_reconciliation.json

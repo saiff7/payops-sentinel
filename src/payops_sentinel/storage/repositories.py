@@ -796,3 +796,60 @@ def json_loads(value: str) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ValueError("expected a JSON object")
     return loaded
+
+
+# ------------------------------------------------------------------ evaluations
+
+
+def insert_evaluation_run(conn: sqlite3.Connection, report: dict[str, Any]) -> None:
+    model_version = report["model_version"]
+    digest = model_version.split("@", 1)[1] if "@" in model_version else None
+    conn.execute(
+        "INSERT INTO evaluation_runs (evaluation_id, model_version, model_digest, agent_version, "
+        "prompt_version, tools_version, started_at, completed_at, metrics_json, passed) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            report["evaluation_id"],
+            model_version,
+            digest,
+            report["agent_version"],
+            report["prompt_version"],
+            report["tools_version"],
+            report["started_at"],
+            report["completed_at"],
+            canonical_json(report["metrics"]),
+            int(report["passed"]),
+        ),
+    )
+
+
+def insert_evaluation_case(
+    conn: sqlite3.Connection, evaluation_id: str, result: dict[str, Any]
+) -> None:
+    conn.execute(
+        "INSERT INTO evaluation_cases (evaluation_id, case_id, expected_tools, actual_tools, "
+        "score, passed, details_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            evaluation_id,
+            result["case_id"],
+            canonical_json(result["expected_tools"]),
+            canonical_json(result["model_tools"]),
+            float(result["passed"]),
+            int(result["passed"]),
+            canonical_json(result),
+        ),
+    )
+
+
+def list_evaluation_runs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [dict(r) for r in conn.execute("SELECT * FROM evaluation_runs ORDER BY started_at DESC")]
+
+
+def list_evaluation_cases(conn: sqlite3.Connection, evaluation_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM evaluation_cases WHERE evaluation_id = ? ORDER BY case_id",
+            (evaluation_id,),
+        )
+    ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tomllib
 
 import streamlit as st
@@ -29,12 +30,16 @@ st.dataframe(
     width="stretch",
 )
 
+with db() as conn:
+    evaluations = repo.list_evaluation_runs(conn)
+latest_eval = evaluations[0] if evaluations else None
+
 checks = readiness_checks(
     asset,
     project_root=PROJECT_ROOT,
     enforced_tools=frozenset(ALLOWED_TOOLS),
     manifest_tools=load_tool_permissions(cfg.agent.tool_permissions_path, "agent_service"),
-    latest_evaluation_passed=None,
+    latest_evaluation_passed=bool(latest_eval["passed"]) if latest_eval else None,
 )
 ready = all(c.passed for c in checks)
 (st.success if ready else st.warning)(
@@ -101,10 +106,87 @@ with right:
     st.dataframe(snap["tool_activity"], hide_index=True, width="stretch")
 
 st.subheader("Evaluations")
-st.info(
-    "No evaluation run recorded yet. The 30-case evaluation harness arrives in Phase 4; "
-    "no scores are shown until genuine runs exist."
-)
+if not evaluations:
+    st.info(
+        "No evaluation run recorded yet. Run `uv run payops evaluate`; no scores are shown "
+        "until genuine runs exist."
+    )
+else:
+    latest_metrics = json.loads(latest_eval["metrics_json"])
+    gate = "PASSED" if latest_eval["passed"] else "FAILED"
+    st.markdown(
+        f"Latest: **{latest_eval['evaluation_id']}** · model `{latest_eval['model_version']}`"
+        f" · prompt {latest_eval['prompt_version']} · tools {latest_eval['tools_version']} "
+        f"· release gate **{gate}**"
+    )
+    tiles = st.columns(4)
+    for tile, (label, key) in zip(
+        tiles,
+        [
+            ("Tool selection", "tool_selection_accuracy"),
+            ("Schema validity", "schema_validity"),
+            ("Evidence coverage", "evidence_coverage"),
+            ("P95 latency", "latest_p95"),
+        ],
+        strict=True,
+    ):
+        if key == "latest_p95":
+            tile.metric(label, f"{latest_metrics['latency_p95_ms'] / 1000:.1f} s")
+        else:
+            previous = json.loads(evaluations[1]["metrics_json"]) if len(evaluations) > 1 else {}
+            delta = (latest_metrics[key] - previous[key]) if key in previous else None
+            tile.metric(
+                label,
+                f"{latest_metrics[key]:.0%}",
+                delta=None if delta is None else f"{delta:+.0%}",
+            )
+    st.markdown("**Evaluation history**")
+    st.dataframe(
+        [
+            {
+                "evaluation_id": e["evaluation_id"],
+                "model": e["model_version"],
+                "prompt": e["prompt_version"],
+                "tools": e["tools_version"],
+                "passed": bool(e["passed"]),
+                **{
+                    k: v
+                    for k, v in json.loads(e["metrics_json"]).items()
+                    if k
+                    in (
+                        "case_pass_rate",
+                        "tool_selection_accuracy",
+                        "tool_argument_accuracy",
+                        "failed_model_tool_calls",
+                        "critical_security_violations",
+                    )
+                },
+            }
+            for e in evaluations
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    with db() as conn:
+        failing = [
+            c
+            for c in repo.list_evaluation_cases(conn, latest_eval["evaluation_id"])
+            if not c["passed"]
+        ]
+    if failing:
+        st.markdown(f"**Failing cases in {latest_eval['evaluation_id']}**")
+        st.dataframe(
+            [
+                {
+                    "case_id": c["case_id"],
+                    "actual_tools": c["actual_tools"],
+                    "notes": "; ".join(json.loads(c["details_json"])["notes"]),
+                }
+                for c in failing
+            ],
+            hide_index=True,
+            width="stretch",
+        )
 
 st.subheader("Audit chain")
 if st.button("Verify audit chain"):

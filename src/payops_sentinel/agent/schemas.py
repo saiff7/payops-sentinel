@@ -50,6 +50,7 @@ class FailureCategory(StrEnum):
     EVIDENCE_MISMATCH = "EVIDENCE_MISMATCH"
     UNSUPPORTED_CONTENT = "UNSUPPORTED_CONTENT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    AGENT_DISABLED = "AGENT_DISABLED"
 
 
 class ToolCallRecord(BaseModel):
@@ -79,4 +80,6 @@ class InvestigationOutcome(BaseModel):
     draft_version: int | None = None
     content_hash: str | None = None
     tool_calls: list[ToolCallRecord] = []
+    model_turns: int = 0
+    draft_attempts: int = 0
     duration_ms: int = 0

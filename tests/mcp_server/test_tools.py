@@ -170,3 +170,23 @@ def test_separate_stdio_server_process(ingested, settings, manifest_path):
     names, r = anyio.run(go)
     assert names == list(ALLOWED_TOOLS)
     assert r.structured_content["employee_ref"] == "EMP-0017"
+
+
+@pytest.mark.parametrize(
+    ("exception_id", "expected"),
+    [
+        (
+            "EXC-000004",
+            {
+                "plan_id": "PLAN-401K-A",
+                "rule_code": "EMPLOYEE_DEFERRAL_PCT",
+                "as_of_date": "2026-10-31",
+            },
+        ),
+        ("EXC-000009", None),  # after-termination finding: no plan rule applies
+        ("EXC-000010", None),  # duplicate row
+    ],
+)
+def test_rule_lookup_hint(ingested, settings, manifest_path, exception_id, expected):
+    r = _call(settings, manifest_path, "get_exception_details", {"exception_id": exception_id})
+    assert r.structured_content["rule_lookup"] == expected

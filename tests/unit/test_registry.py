@@ -58,3 +58,16 @@ def test_gate_passes_only_when_every_requirement_is_met(tmp_path):
         )
     }
     assert all(checks.values())
+
+
+def test_manifest_versions_match_the_code():
+    from payops_sentinel import __version__
+    from payops_sentinel.agent.prompts import PROMPT_VERSION
+    from payops_sentinel.mcp_server.tools import TOOLS_VERSION
+
+    asset = load_agent_asset(GOV / "agent_manifest.toml")
+    assert (asset.agent_version, asset.prompt_version, asset.tools_version) == (
+        __version__,
+        PROMPT_VERSION,
+        TOOLS_VERSION,
+    )

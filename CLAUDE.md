@@ -62,6 +62,9 @@ uv run payops show BATCH-000001 --evidence
 uv run payops investigate EXC-000004      # real agent run: Qwen3 + separate MCP process
 uv run pytest -q                          # all tests (no Ollama needed; fake model)
 uv run pytest -m ollama -q                # opt-in live tests against local qwen3:8b
+uv run payops evaluate                    # 30 golden cases vs live model → evals/reports + DB
+uv run payops eval-compare A.json B.json  # regression check (non-zero exit on regression)
+uv run payops backup backups/x.db         # online backup + verification; payops verify-db
 uv run ruff check . && uv run ruff format --check . && uv lock --check
 uv run streamlit run src/payops_sentinel/ui/app.py      # UI (auto-creates DB + reference data)
 ```
@@ -121,4 +124,11 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
 - **Phase 3 (complete):** Streamlit app (Batches, Exceptions, Governance), review service with
   role checks and versioned drafts, approved artifacts, hash-chained audit, restricted-content
   safeguards, telemetry, readiness gate. 184 tests passing (+2 live Ollama).
-- **Next: Phase 4 — evaluation suite (30 cases), CI, docs/runbook/handover, README** (awaiting go-ahead).
+- **Phase 4 (complete):** 30-case evaluation harness (`operations/evaluations.py`, release gate,
+  JSON + DB reports, regression compare), backup/verify-db, agent kill switch, CI workflow,
+  docs (architecture, data dictionary, threat model, evaluation plan, runbook, handover, release
+  checklist), README. 208 tests + 2 live. Prompt/tools 1.1.0, package 0.4.0.
+- **Evaluation status:** qwen3:8b FAILS the gate (tool selection 0.571 → 0.750 after fix 1.1.0;
+  0 security violations). Release blocked; candidate fixes listed in README §9.
+- Rule: any prompt/tool/guardrail/model change needs a full `payops evaluate` + compare before release;
+  never relax thresholds to make a run pass.

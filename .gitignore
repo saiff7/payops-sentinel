@@ -11,6 +11,7 @@ data/uploads/*
 data/artifacts/*
 !data/uploads/.gitkeep
 !data/artifacts/.gitkeep
-reports/
+/reports/
 .env
 .DS_Store
+backups/

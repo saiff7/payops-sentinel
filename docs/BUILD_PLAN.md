@@ -1,6 +1,6 @@
 # PayOps Sentinel — Build Plan (Phase 0 output)
 
-Date: 2026-11-17 · Status: Phase 3 complete (184 tests + 2 live Ollama tests); Phase 4 not started.
+Date: 2026-11-17 · Status: Phase 4 complete (208 tests + 2 live Ollama tests). All four phases delivered.
 
 ## 1. Repository and environment assessment
 
@@ -158,4 +158,17 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
   external anchor; no four-eyes rule (the editing reviewer may approve); identity is simulated.
 - UI verified with Streamlit AppTest (CI smoke tests) and a headless live run: upload → Qwen3
   investigation → approve → artifact → audit chain verified (3 events).
+
+## 10. Phase 4 notes
+
+- Evaluation harness runs each case on a fresh synthetic DB with the real orchestrator and a stdio
+  MCP server; results go to `evals/reports/*.json` and `evaluation_runs`/`evaluation_cases`.
+  Partial runs (`--cases`) are flagged and can never pass the gate.
+- CI exercises the harness with a scripted reference model; live evaluations run locally only.
+- Measured: baseline 1.0.0 tool selection 0.571; fix 1.1.0 (`rule_lookup` hint + prompt) 0.750.
+  Gate still FAILED → manifest `evaluation_status` records the failure; release remains blocked.
+- Added `[agent] enabled` kill switch, `payops backup` / `verify-db` (tested restore), version
+  consistency test (manifest == code), runbook/config validation tests.
+- Not done (needs the maintainer): screenshots/video, LICENSE choice, real backup owner, GitHub
+  remote (CI has not yet run on GitHub), human rubric scoring of drafts.
 
