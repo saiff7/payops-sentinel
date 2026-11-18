@@ -47,6 +47,9 @@ flowchart LR
 3. The host lists tools, keeps only the six allowlisted, read-only ones (`check_tool_catalog`), and
    converts their schemas into Ollama function definitions.
 4. The host reads ground truth itself (exception details + evidence; recorded as actor `host`).
+   In host-prefetch mode (the release default) these results, plus the plan rule named by the
+   finding's `rule_lookup`, are given to the model as its first tool results, so required reads
+   cannot be skipped or derailed by the objective.
 5. Tool loop (≤ 4 model turns, ≤ 8 calls): Qwen3 proposes calls → the host validates the name and
    arguments (`validate_tool_call`) → MCP executes → the result goes back to the model as data.
 6. Drafting: one schema-constrained call (`format=AgentInvestigationDraft` JSON schema, no tools),

@@ -8,8 +8,10 @@ import tomllib
 import streamlit as st
 
 from payops_sentinel.agent.guardrails import ALLOWED_TOOLS
+from payops_sentinel.agent.prompts import prompt_version
 from payops_sentinel.config import PROJECT_ROOT
 from payops_sentinel.operations.registry import (
+    latest_matching_evaluation,
     load_agent_asset,
     load_tool_permissions,
     readiness_checks,
@@ -33,13 +35,16 @@ st.dataframe(
 with db() as conn:
     evaluations = repo.list_evaluation_runs(conn)
 latest_eval = evaluations[0] if evaluations else None
+gate_eval = latest_matching_evaluation(
+    evaluations, model=cfg.agent.model, prompt_version=prompt_version(cfg.agent.prefetch)
+)
 
 checks = readiness_checks(
     asset,
     project_root=PROJECT_ROOT,
     enforced_tools=frozenset(ALLOWED_TOOLS),
     manifest_tools=load_tool_permissions(cfg.agent.tool_permissions_path, "agent_service"),
-    latest_evaluation_passed=bool(latest_eval["passed"]) if latest_eval else None,
+    latest_evaluation_passed=bool(gate_eval["passed"]) if gate_eval else None,
 )
 ready = all(c.passed for c in checks)
 (st.success if ready else st.warning)(
@@ -114,6 +119,11 @@ if not evaluations:
 else:
     latest_metrics = json.loads(latest_eval["metrics_json"])
     gate = "PASSED" if latest_eval["passed"] else "FAILED"
+    st.caption(
+        f"Readiness uses the latest evaluation of the configured agent ({cfg.agent.model}, prompt "
+        f"{prompt_version(cfg.agent.prefetch)}): "
+        f"{gate_eval['evaluation_id'] if gate_eval else 'none yet'}."
+    )
     st.markdown(
         f"Latest: **{latest_eval['evaluation_id']}** · model `{latest_eval['model_version']}`"
         f" · prompt {latest_eval['prompt_version']} · tools {latest_eval['tools_version']} "

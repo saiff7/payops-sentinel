@@ -19,7 +19,8 @@ source code. Start with `README.md`, then this page, then `docs/runbook.md`.
 
 | Question | Answer |
 |---|---|
-| Which model? | `qwen3:8b` via local Ollama (`config.toml [agent]`). The exact digest is in every `agent_runs.model_version` and evaluation report. |
+| Which model? | `qwen3:8b` (digest `500a1f067a9f`) via local Ollama (`config.toml [agent]`). The exact digest is in every `agent_runs.model_version` and evaluation report. |
+| Which retrieval mode? | `host-prefetch` (`[agent] prefetch = true`): the host supplies details, evidence and the applicable plan rule; the model chooses further reads (e.g. a requested batch summary). Runs record prompt `1.5.0+prefetch`. |
 | How does the MCP process start? | Per investigation, the host runs `python -m payops_sentinel.mcp_server.server --db <db> --manifest <toml>` over stdio (`agent/orchestrator.py::server_parameters`). |
 | What can its tools access? | Six read-only tools (`governance/tool_permissions.toml`) over a `mode=ro` + `query_only` SQLite connection. No write, approve, send or delete tool exists. |
 | How is agent configuration versioned? | `PROMPT_VERSION` (`agent/prompts.py`), `TOOLS_VERSION` (`mcp_server/tools.py`), `agent_version` (package version), the model digest, and `governance/agent_manifest.toml`, all recorded per run and per evaluation. |

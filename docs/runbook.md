@@ -33,6 +33,14 @@ failures, review queue age, and audit-chain verification.
 | Reviewer service fails | Errors on approve/reject | Drafts are preserved; stop approvals until fixed. No partial approvals: each action is one transaction. |
 | Audit chain broken | `verify-db` / Governance shows "Chain broken at sequence N" | Treat as a security incident: preserve the file, restore the last verified backup, investigate access. |
 
+## Retrieval mode
+
+Release 0.6.0 ships with `[agent] prefetch = true` (`host-prefetch`). Setting it to `false` returns
+to fully model-selected tool use, which is a different evaluated configuration (prompt version
+without `+prefetch`; release gate FAILED for qwen3:8b). Never change it in operation without a full `payops evaluate` of
+the resulting configuration; the Governance readiness check only counts evaluations of the
+configured model and prompt version.
+
 ## Disable AI investigation (kill switch)
 
 Set `enabled = false` under `[agent]` in `config.toml` and restart the UI. Every investigation

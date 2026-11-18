@@ -171,4 +171,29 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
   consistency test (manifest == code), runbook/config validation tests.
 - Not done (needs the maintainer): screenshots/video, LICENSE choice, real backup owner, GitHub
   remote (CI has not yet run on GitHub), human rubric scoring of drafts.
+- Fix 1.2.0 (task-scoped tool exposure + prompt): tool selection 0.893 (25/28), failed tool calls 0,
+  no regressions vs 1.1.0. Gate still FAILED by one case; remaining: 2 batch-context skips,
+  2 fail-closed guardrail rejections.
+- Model comparison (no prompt, tool, case or threshold change): qwen3:14b PASSES (tool selection
+  0.964, 27/28; case pass 29/30), fixing AGENT-015/021/023; AGENT-026 still fails safely on both
+  models. 14b is about 2.2× slower (p95 118 s). Config and manifest still name qwen3:8b pending the
+  maintainer's decision. Fixed: readiness now uses only evaluations of the configured model + prompt.
+- Prefetch experiment (flag `[agent] prefetch`, default false; methodology `host-prefetch`, prompt
+  `1.2.0+prefetch`; credit for prefetched calls only in labelled runs): qwen3:8b passes, case pass
+  29/30, p95 51 s; fixes AGENT-026; AGENT-015 (8b cents/dollars error) remains, caught by guardrail.
+  Chosen as release candidate 0.6.0.
+- Release validation 0.6.0: two independent full runs PASSED (EVAL-20261118T005733Z, …011042Z).
+  config.toml prefetch=true; package/manifest 0.6.0; manifest retrieval_mode=host-prefetch,
+  prompt 1.2.0+prefetch, model digest 500a1f067a9f. Known risk: EXC-000003 cents/dollars error
+  (always caught). Not committed or tagged pending maintainer approval.
+- Cents fix: tools 1.2.0 add derived `display_amounts` (hashed snapshots unchanged); prompt 1.3.0
+  requires quoting them. Re-validation: 2 runs PASSED (…013136Z, …014740Z); EXC-000003 8/8 correct.
+  New regression AGENT-021/023 (batch summary skipped; drafts still correct). Pending decision:
+  fix (another 2-run cycle) or accept in writing. Not committed.
+- Prompt 1.4.0: AGENT-021/023 fixed (4/4 replays), EXC-000003 still fixed; 2 runs PASSED but
+  AGENT-014/016 newly skip lookup_plan_rule (drafts correct). Prompt-only tuning of 8b moves failures
+  between cases. Decision pending: prefetch the rule lookup too, accept in writing, or 14b+prefetch.
+- Prompt 1.5.0: host also prefetches the applicable plan rule. Final validation: 2 runs PASSED with
+  30/30 each (EVAL-20261118T032820Z, …034429Z); all earlier failures fixed, including in replays.
+  Manifest evaluation_status = passed. Release candidate 0.6.0 committed; not tagged.
 

@@ -80,6 +80,7 @@ class InvestigationOutcome(BaseModel):
     draft_version: int | None = None
     content_hash: str | None = None
     tool_calls: list[ToolCallRecord] = []
+    prefetched_tools: list[str] = []  # host-supplied results given to the model
     model_turns: int = 0
     draft_attempts: int = 0
     duration_ms: int = 0

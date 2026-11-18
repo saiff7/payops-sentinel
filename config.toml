@@ -19,6 +19,7 @@ dir = "data/synthetic"
 [agent]
 # Local Ollama only: cloud models and non-local hosts are rejected at load time.
 enabled = true            # set false to disable AI investigation (manual review only)
+prefetch = true           # release 0.6.0: host prefetches details + evidence (methodology host-prefetch)
 model = "qwen3:8b"
 ollama_host = "http://127.0.0.1:11434"
 request_timeout_s = 180

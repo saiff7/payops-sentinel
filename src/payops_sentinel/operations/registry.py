@@ -18,6 +18,7 @@ class AgentAsset(BaseModel):
     model_digest: str
     prompt_version: str
     tools_version: str
+    retrieval_mode: str
     technical_owner: str
     business_owner: str
     backup_owner: str
@@ -102,3 +103,17 @@ def readiness_checks(
             detail=asset.release_status,
         ),
     ]
+
+
+def latest_matching_evaluation(
+    evaluations: list[dict], *, model: str, prompt_version: str
+) -> dict | None:
+    """Latest evaluation that applies to the *configured* agent (same model and prompt version).
+
+    An evaluation of a different model or prompt must never satisfy the release gate.
+    ``evaluations`` is ordered newest first (``repositories.list_evaluation_runs``).
+    """
+    for e in evaluations:
+        if e["model_version"].split("@", 1)[0] == model and e["prompt_version"] == prompt_version:
+            return e
+    return None

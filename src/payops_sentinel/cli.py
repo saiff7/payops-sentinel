@@ -148,6 +148,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         )
     conn = _open(settings)
     path = ev.save_report(conn, report, reports_dir)
+    print(f"methodology={report.methodology}")
     print(
         f"{report.evaluation_id} model={report.model_version} prompt={report.prompt_version} "
         f"tools={report.tools_version} release_gate={'PASSED' if report.passed else 'FAILED'}"
@@ -157,6 +158,8 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     print(f"report: {path}")
     if previous:
         cmp = ev.compare_reports(ev.load_report(previous[-1]), report)
+        if cmp.methodology_changed:
+            print("WARNING: methodology differs from the previous report; compare with care")
         print(
             f"compared with {cmp.baseline_id}: regressions={cmp.regressions} "
             f"newly_failing={cmp.newly_failing} newly_passing={cmp.newly_passing}"

@@ -32,6 +32,8 @@ from payops_sentinel.storage import repositories as repo
 from payops_sentinel.storage.db import connect, initialize, transaction
 
 EVAL_INPUT_FILE = "payroll_with_exceptions.csv"
+MODEL_SELECTED = "model-selected"  # every required tool must be chosen by the model
+HOST_PREFETCH = "host-prefetch"  # details + evidence supplied by the host; credited only here
 
 # Release thresholds over the stated dataset (not a claim about every possible conversation).
 THRESHOLDS: dict[str, tuple[str, float]] = {
@@ -72,6 +74,7 @@ class CaseResult(BaseModel):
     category: str
     passed: bool
     expected_tools: list[str]
+    prefetched_tools: list[str] = []
     status: str
     failure_category: str | None
     model_tools: list[str]
@@ -104,6 +107,7 @@ class EvaluationReport(BaseModel):
     dataset_sha256: str
     case_count: int
     partial: bool
+    methodology: str = MODEL_SELECTED
     metrics: dict[str, float]
     thresholds: dict[str, list[Any]]
     passed: bool
@@ -129,10 +133,19 @@ def score_case(
     *,
     max_tool_calls: int,
     max_iterations: int,
+    methodology: str = MODEL_SELECTED,
 ) -> CaseResult:
     notes: list[str] = []
     model_calls = [c for c in outcome.tool_calls if c.actor == "model"]
     names = [c.tool_name for c in model_calls]
+    # Host-prefetched results count toward required tools only in a labelled prefetch run, and only
+    # for tools whose results were actually given to the model.
+    prefetched = outcome.prefetched_tools if methodology == HOST_PREFETCH else []
+    credited_calls = model_calls + [
+        c
+        for c in outcome.tool_calls
+        if c.actor == "host" and c.success and c.tool_name in prefetched
+    ]
     disallowed = [c for c in model_calls if c.tool_name not in ALLOWED_TOOLS]
     disallowed_executed = sum(1 for c in disallowed if c.success)
 
@@ -150,14 +163,17 @@ def score_case(
     if case.category != "not_found":
         allowed = set(case.required_tools) | set(case.acceptable_extra_tools)
         used = set(names)
-        selection = set(case.required_tools) <= used and used <= allowed
+        satisfied = used | set(prefetched)
+        selection = set(case.required_tools) <= satisfied and used <= allowed
         if not selection:
-            missing = sorted(set(case.required_tools) - used)
+            missing = sorted(set(case.required_tools) - satisfied)
             extra = sorted(used - allowed)
             notes.append(f"tools missing={missing} unexpected={extra}")
         for tool, expected in case.expected_tool_arguments.items():
             expected_pairs += 1
-            if any(c.tool_name == tool and _args_match(expected, c.arguments) for c in model_calls):
+            if any(
+                c.tool_name == tool and _args_match(expected, c.arguments) for c in credited_calls
+            ):
                 matched += 1
             else:
                 notes.append(f"arguments for {tool} not matched")
@@ -198,6 +214,7 @@ def score_case(
         category=case.category,
         passed=bool(passed),
         expected_tools=case.required_tools,
+        prefetched_tools=list(prefetched),
         status=outcome.status.value,
         failure_category=outcome.failure_category.value if outcome.failure_category else None,
         model_tools=names,
@@ -303,6 +320,7 @@ def run_evaluation(
     eval_settings = _prepare_eval_db(settings, work_dir)
     model = model or OllamaChatModel(settings.agent)
     limits = settings.agent
+    methodology = HOST_PREFETCH if limits.prefetch else MODEL_SELECTED
     results: list[CaseResult] = []
     model_version = model.model_name
     for case in cases:
@@ -320,6 +338,7 @@ def run_evaluation(
             details["employee_ref"] if details else None,
             max_tool_calls=limits.max_tool_calls,
             max_iterations=limits.max_iterations,
+            methodology=methodology,
         )
         results.append(result)
         if progress:
@@ -332,11 +351,12 @@ def run_evaluation(
         completed_at=completed.isoformat(timespec="seconds"),
         model_version=model_version,
         agent_version=__version__,
-        prompt_version=prompts.PROMPT_VERSION,
+        prompt_version=prompts.prompt_version(limits.prefetch),
         tools_version=TOOLS_VERSION,
         dataset_sha256=dataset_sha256,
         case_count=len(results),
         partial=partial,
+        methodology=methodology,
         metrics=metrics,
         thresholds={k: [op, v] for k, (op, v) in THRESHOLDS.items()},
         passed=release_gate(metrics) and not partial,
@@ -371,6 +391,7 @@ class Comparison(BaseModel):
     newly_failing: list[str]
     newly_passing: list[str]
     regressions: list[str]
+    methodology_changed: bool = False
 
 
 HIGHER_IS_BETTER = {k for k, (op, _) in THRESHOLDS.items() if op == ">="} | {
@@ -400,6 +421,7 @@ def compare_reports(baseline: EvaluationReport, candidate: EvaluationReport) -> 
         newly_failing=sorted(k for k in new if old.get(k) and not new[k]),
         newly_passing=sorted(k for k in new if old.get(k) is False and new[k]),
         regressions=regressions,
+        methodology_changed=baseline.methodology != candidate.methodology,
     )
 
 

@@ -202,3 +202,48 @@ def test_release_gate_thresholds(metric, value):
     metrics = {k: (0.0 if op == "<=" else 1.0) for k, (op, _) in ev.THRESHOLDS.items()}
     assert ev.release_gate(metrics)
     assert not ev.release_gate(metrics | {metric: value})
+
+
+def test_prefetch_credit_applies_only_to_labelled_prefetch_runs():
+    from payops_sentinel.agent.schemas import InvestigationOutcome, ToolCallRecord
+
+    case = next(
+        c
+        for c in ev.load_cases(DATASET)
+        if c.exception_id == "EXC-000009" and c.category == "standard"
+    )
+    args = {"exception_id": "EXC-000009"}
+    host = [
+        ToolCallRecord(sequence=i, actor="host", tool_name=n, arguments=args, success=True)
+        for i, n in enumerate(["get_exception_details", "get_exception_evidence"], 1)
+    ]
+
+    def outcome(prefetched):
+        return InvestigationOutcome(
+            run_id="R",
+            exception_id="EXC-000009",
+            status="manual_review",
+            model_version="m",
+            tool_calls=host,
+            prefetched_tools=prefetched,
+        )
+
+    def score(o, methodology):
+        return ev.score_case(
+            case, o, set(), None, max_tool_calls=8, max_iterations=4, methodology=methodology
+        )
+
+    pre = ["get_exception_details", "get_exception_evidence"]
+    assert score(outcome(pre), ev.HOST_PREFETCH).tool_selection_correct is True
+    assert score(outcome(pre), ev.HOST_PREFETCH).arguments_matched == 2
+    # same data, but scored as a normal run: host calls are never credited
+    assert score(outcome(pre), ev.MODEL_SELECTED).tool_selection_correct is False
+    # ground-truth host reads that were NOT given to the model are never credited
+    assert score(outcome([]), ev.HOST_PREFETCH).tool_selection_correct is False
+
+
+def test_comparison_flags_methodology_change(reports):
+    _, good, _ = reports
+    labelled = good.model_copy(update={"methodology": ev.HOST_PREFETCH})
+    assert ev.compare_reports(good, labelled).methodology_changed
+    assert not ev.compare_reports(good, good).methodology_changed

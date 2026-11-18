@@ -258,3 +258,25 @@ def test_deterministic_layers_have_no_ai_dependencies():
                 if m.startswith(("payops_sentinel.agent", "payops_sentinel.mcp_server"))
             }
             assert not forbidden, f"{path.name} imports {forbidden}"
+
+
+# ------------------------------------------------------------------ dollar display formatting
+
+
+@pytest.mark.parametrize(
+    ("cents", "text"),
+    [
+        (363_140, "$3,631.40"),
+        (20_000, "$200.00"),
+        (0, "$0.00"),
+        (1, "$0.01"),
+        (-2, "-$0.02"),
+        (99_999_999_999, "$999,999,999.99"),
+    ],
+)
+def test_dollar_display_matches_guardrail_parsing(cents, text):
+    from payops_sentinel.agent.guardrails import mentioned_amounts_cents
+    from payops_sentinel.mcp_server.tools import dollars
+
+    assert dollars(cents) == text
+    assert mentioned_amounts_cents(f"amount {text} here") == {abs(cents)}

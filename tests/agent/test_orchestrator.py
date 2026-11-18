@@ -375,3 +375,83 @@ def test_kill_switch_routes_to_manual_review_without_model(ingested, conn, setti
     assert out.failure_category is FailureCategory.AGENT_DISABLED
     assert model.calls == []
     assert repo.exception_details(conn, EXC)["status"] == "manual_review"
+
+
+def test_rule_lookup_not_offered_when_no_rule_applies(investigate):
+    model = FakeModel(tool("lookup_plan_rule", **RULE_ARGS))
+    out = investigate(model, exception_id="EXC-000009")  # after-termination: no plan rule
+    offered = [t["function"]["name"] for t in model.calls[0]["tools"]]
+    assert "lookup_plan_rule" not in offered and len(offered) == 5
+    rejected = _model_calls(out)[0]
+    assert (rejected.tool_name, rejected.success) == ("lookup_plan_rule", False)
+    assert rejected.error_category == "REJECTED_NOT_OFFERED"
+
+
+# ------------------------------------------------------------------ prefetch experiment
+
+
+def _no_tool_draft(conn, exception_id="EXC-000009"):
+    ids = repo.exception_details(conn, exception_id)["evidence_ids"]
+    body = json.loads(draft_json(ids).content) | {
+        "exception_id": exception_id,
+        "investigation_summary": "Contribution flagged after termination for EMP-0031.",
+        "reasoning_summary": "The payroll row period starts after the recorded termination date.",
+        "email_body": "Hello, please verify the October 2026 entry for EMP-0031 and confirm the "
+        "termination status or provide a corrected record. Thank you.",
+    }
+    return text(json.dumps(body))
+
+
+def test_prefetch_supplies_evidence_and_is_labelled(investigate, conn, settings):
+    limits = replace(AgentLimits.from_settings(settings.agent), prefetch=True)
+    model = FakeModel(text("I have what I need."), _no_tool_draft(conn))
+    out = investigate(model, exception_id="EXC-000009", limits=limits)
+    assert out.status is InvestigationStatus.DRAFT_READY
+    assert out.prefetched_tools == ["get_exception_details", "get_exception_evidence"]
+    assert _model_calls(out) == []
+    first = model.calls[0]["messages"]
+    assert [m["tool_name"] for m in first if m["role"] == "tool"] == out.prefetched_tools
+    assert "Steps 1 to 3 are done" in first[0]["content"]
+    run = repo.get_agent_run(conn, out.run_id)
+    assert run["prompt_version"] == PROMPT_VERSION + "+prefetch"
+
+
+def test_without_prefetch_the_same_behaviour_fails_closed(investigate, conn):
+    draft = _no_tool_draft(conn)
+    out = investigate(
+        FakeModel(text("I have what I need."), draft, draft), exception_id="EXC-000009"
+    )
+    assert out.prefetched_tools == []
+    assert out.failure_category is FailureCategory.EVIDENCE_MISMATCH
+
+
+def test_prefetch_note_preserves_explicitly_requested_context(investigate, conn, settings):
+    """Regression (AGENT-021/023): prefetch must not crowd out a requested batch summary."""
+    limits = replace(AgentLimits.from_settings(settings.agent), prefetch=True)
+    model = FakeModel(tool("get_batch_summary", batch_id="BATCH-000001"), text("done"))
+    out = investigate(model, exception_id="EXC-000009", limits=limits)
+    system = model.calls[0]["messages"][0]["content"]
+    assert "get_batch_summary" in system and "Never describe a batch" in system
+    assert "get_batch_summary" in [t["function"]["name"] for t in model.calls[0]["tools"]]
+    assert [c.tool_name for c in _model_calls(out)] == ["get_batch_summary"]
+    assert _model_calls(out)[0].success
+
+
+def test_prefetch_includes_the_applicable_plan_rule(investigate, conn, settings, evidence_ids):
+    limits = replace(AgentLimits.from_settings(settings.agent), prefetch=True)
+    model = FakeModel(text("I have what I need."), draft_json(evidence_ids))
+    out = investigate(model, limits=limits)  # EXC-000004: a plan rule applies
+    assert out.status is InvestigationStatus.DRAFT_READY
+    assert out.prefetched_tools == [
+        "get_exception_details",
+        "get_exception_evidence",
+        "lookup_plan_rule",
+    ]
+    host_rule = [
+        c for c in out.tool_calls if c.actor == "host" and c.tool_name == "lookup_plan_rule"
+    ]
+    assert len(host_rule) == 1 and host_rule[0].success and host_rule[0].arguments == RULE_ARGS
+    tool_msgs = [m for m in model.calls[0]["messages"] if m["role"] == "tool"]
+    assert [m["tool_name"] for m in tool_msgs] == out.prefetched_tools
+    assert "RULE-DEFERRAL-PCT-V1" in tool_msgs[2]["content"]
+    assert _model_calls(out) == []

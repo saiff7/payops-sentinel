@@ -19,11 +19,27 @@ from payops_sentinel.domain.enums import ExceptionStatus, ExceptionType
 from payops_sentinel.operations.registry import AgentAsset
 from payops_sentinel.storage import repositories as repo
 
-TOOLS_VERSION = "1.1.0"  # 1.1.0: explicit rule_lookup in exception details
+TOOLS_VERSION = "1.2.0"  # 1.1.0: rule_lookup hint; 1.2.0: pre-formatted dollar amounts
 AMOUNT_NOTE = (
-    "Amounts are outputs of the deterministic reconciliation engine. Quote them as given; "
-    "do not recalculate them."
+    "Amounts are outputs of the deterministic reconciliation engine. *_cents fields are integer "
+    "cents. To mention any amount, copy the matching display_amounts string exactly (for example "
+    "$3,631.40); never convert cents to dollars yourself and never recalculate."
 )
+
+
+def dollars(cents: int) -> str:
+    """Deterministic cents → dollars formatting, so the model never converts units itself."""
+    sign = "-" if cents < 0 else ""
+    return f"{sign}${abs(cents) / 100:,.2f}"
+
+
+def display_amounts(values: dict[str, Any]) -> dict[str, str]:
+    """Dollar strings for every integer ``*_cents`` field (derived; not part of hashed evidence)."""
+    return {
+        key: dollars(value)
+        for key, value in values.items()
+        if key.endswith("_cents") and isinstance(value, int) and not isinstance(value, bool)
+    }
 
 
 class NotFoundError(ToolError):
@@ -82,6 +98,7 @@ class ExceptionDetails(_Out):
     reconciliation_reason: str
     recorded_contribution_cents: int | None
     expected_contribution_cents: int | None
+    display_amounts: dict[str, str]  # e.g. {"expected_contribution_cents": "$200.00"}
     rule_id: str | None
     plan_id: str | None
     rule_code: str | None
@@ -97,6 +114,7 @@ class EvidenceRecord(_Out):
     source_reference: str
     snapshot: dict[str, Any]
     content_hash: str
+    display_amounts: dict[str, str]  # derived from snapshot; quote these verbatim
 
 
 class ExceptionEvidence(_Out):
@@ -190,6 +208,12 @@ def get_exception_details(conn: sqlite3.Connection, exception_id: str) -> Except
         reconciliation_reason=d["reason"],
         recorded_contribution_cents=d["actual_cents"],
         expected_contribution_cents=d["expected_cents"],
+        display_amounts=display_amounts(
+            {
+                "recorded_contribution_cents": d["actual_cents"],
+                "expected_contribution_cents": d["expected_cents"],
+            }
+        ),
         rule_id=d["rule_id"],
         plan_id=d["plan_id"],
         rule_code=d["rule_code"],
@@ -215,6 +239,7 @@ def get_exception_evidence(conn: sqlite3.Connection, exception_id: str) -> Excep
             source_reference=e["source_reference"],
             snapshot=json.loads(e["snapshot_json"]),
             content_hash=e["content_hash"],
+            display_amounts=display_amounts(json.loads(e["snapshot_json"])),
         )
         for e in repo.list_evidence(conn, exception_id)
     ]

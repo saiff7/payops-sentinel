@@ -19,6 +19,7 @@ class AgentSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = True  # kill switch: false routes every investigation to manual review
+    prefetch: bool = False  # experiment: host supplies details + evidence before the tool loop
     model: str = "qwen3:8b"
     ollama_host: str = "http://127.0.0.1:11434"
     request_timeout_s: float = Field(default=180, gt=0)

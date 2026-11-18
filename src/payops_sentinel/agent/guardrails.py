@@ -84,6 +84,7 @@ class AgentLimits:
     max_result_chars: int
     tool_timeout_s: float
     max_draft_attempts: int
+    prefetch: bool = False
 
     @classmethod
     def from_settings(cls, s: AgentSettings) -> AgentLimits:
@@ -93,6 +94,7 @@ class AgentLimits:
             max_result_chars=s.max_result_chars,
             tool_timeout_s=s.tool_timeout_s,
             max_draft_attempts=s.max_draft_attempts,
+            prefetch=s.prefetch,
         )
 
 
@@ -130,9 +132,15 @@ def to_ollama_tools(tools: Iterable[Tool]) -> list[dict[str, Any]]:
     ]
 
 
-def validate_tool_call(name: str, arguments: Any) -> dict[str, Any]:
+def validate_tool_call(
+    name: str, arguments: Any, offered: frozenset[str] | None = None
+) -> dict[str, Any]:
     """Reject unknown tools and invalid/extra arguments before anything is executed."""
     model = ALLOWED_TOOLS.get(name)
+    if offered is not None and model is not None and name not in offered:
+        raise GuardrailViolation(
+            "REJECTED_NOT_OFFERED", f"tool '{name}' is not offered for this task"
+        )
     if model is None:
         raise GuardrailViolation("REJECTED_NOT_ALLOWLISTED", f"tool '{name[:60]}' is not permitted")
     if not isinstance(arguments, dict):
@@ -181,6 +189,12 @@ class DraftContext:
     employee_ref: str | None
     evidence_ids: frozenset[str]
     allowed_amounts_cents: frozenset[int]
+    rule_applies: bool = True
+
+
+def scope_tools(exposed: Sequence[Tool], ctx: DraftContext) -> list[Tool]:
+    """Task-scoped least privilege: offer lookup_plan_rule only when a plan rule applies."""
+    return [t for t in exposed if ctx.rule_applies or t.name != "lookup_plan_rule"]
 
 
 def validate_draft(

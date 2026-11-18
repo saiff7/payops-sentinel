@@ -127,8 +127,24 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
 - **Phase 4 (complete):** 30-case evaluation harness (`operations/evaluations.py`, release gate,
   JSON + DB reports, regression compare), backup/verify-db, agent kill switch, CI workflow,
   docs (architecture, data dictionary, threat model, evaluation plan, runbook, handover, release
-  checklist), README. 208 tests + 2 live. Prompt/tools 1.1.0, package 0.4.0.
-- **Evaluation status:** qwen3:8b FAILS the gate (tool selection 0.571 → 0.750 after fix 1.1.0;
-  0 security violations). Release blocked; candidate fixes listed in README §9.
+  checklist), README. 209 tests + 2 live.
+- **Evaluation status:** qwen3:8b FAILS the gate narrowly: tool selection 0.571 (1.0.0) → 0.750
+  (1.1.0) → 0.893 (1.2.0, task-scoped tools; 25/28). 0 security violations. Release blocked.
+- **qwen3:14b** with the same prompt, tools, cases and thresholds **passes** (0.964, 27/28;
+  `EVAL-20261117T235411Z`). Not adopted yet: config and manifest still name qwen3:8b, awaiting the
+  maintainer's decision. The readiness gate uses only evaluations matching the configured model
+  and prompt.
+- **Prefetch experiment:** `[agent] prefetch` (default false). Host passes details + evidence to the
+  model; runs labelled `host-prefetch` / prompt `+prefetch`; prefetched calls credited only there.
+  qwen3:8b + prefetch passes (case pass 29/30, p95 51 s). Tool-selection accuracy is not comparable
+  across methodologies; compare case pass rate, draft quality, safety, latency.
+- **Release candidate 0.6.0 (committed, not tagged):** qwen3:8b + `prefetch = true` in config.toml;
+  final validation 2 runs × 30/30 (EVAL-20261118T032820Z, …034429Z). Manifest: retrieval_mode
+  host-prefetch, prompt `1.5.0+prefetch`, tools `1.2.0`, digest 500a1f067a9f (test enforces
+  manifest == shipped config). Tag awaits maintainer approval.
+- History: tools 1.2.0 `display_amounts` + prompt 1.3.0 fixed EXC-000003 cents; 1.4.0 honoured
+  requested context tools; 1.5.0 prefetches the applicable plan rule.
+- Task-scoped tools: `guardrails.scope_tools` hides `lookup_plan_rule` when no rule applies; calls to
+  tools not offered are rejected (`REJECTED_NOT_OFFERED`). Package 0.5.0, prompt 1.2.0, tools 1.1.0.
 - Rule: any prompt/tool/guardrail/model change needs a full `payops evaluate` + compare before release;
   never relax thresholds to make a run pass.

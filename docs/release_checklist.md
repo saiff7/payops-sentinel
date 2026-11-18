@@ -18,6 +18,7 @@ page shows the automated subset (the readiness gate in `operations/registry.py`)
 - [ ] Source commit / tag.
 - [ ] `agent_version`, `prompt_version` (`agent/prompts.py`), `tools_version` (`mcp_server/tools.py`).
 - [ ] Model name **and digest** (from the evaluation report `model_version`).
+- [ ] Retrieval mode (`[agent] prefetch`) matches the manifest `retrieval_mode` and the evaluated methodology.
 - [ ] Evaluation report file committed in `evals/reports/`; `evaluation_status` updated.
 
 ## Governance

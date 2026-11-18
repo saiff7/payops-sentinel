@@ -190,3 +190,23 @@ def test_separate_stdio_server_process(ingested, settings, manifest_path):
 def test_rule_lookup_hint(ingested, settings, manifest_path, exception_id, expected):
     r = _call(settings, manifest_path, "get_exception_details", {"exception_id": exception_id})
     assert r.structured_content["rule_lookup"] == expected
+
+
+def test_amounts_are_served_pre_formatted_in_dollars(ingested, settings, manifest_path):
+    """EXC-000003: the model once wrote 363140 cents as "$363,140.00" instead of "$3,631.40"."""
+    d = _call(settings, manifest_path, "get_exception_details", {"exception_id": "EXC-000003"})
+    assert d.structured_content["display_amounts"] == {
+        "recorded_contribution_cents": "$363.16",
+        "expected_contribution_cents": "$363.14",
+    }
+    e = _call(settings, manifest_path, "get_exception_evidence", {"exception_id": "EXC-000003"})
+    by_type = {x["evidence_type"]: x for x in e.structured_content["evidence"]}
+    assert by_type["payroll_row"]["display_amounts"]["eligible_comp_cents"] == "$3,631.40"
+    calc = by_type["calculation"]["display_amounts"]
+    assert calc["difference_cents"] == "$0.02" and calc["tolerance_cents"] == "$0.01"
+    # display strings are derived; the hashed evidence snapshot itself is unchanged
+    from payops_sentinel.hashing import canonical_json
+
+    for x in e.structured_content["evidence"]:
+        assert "display_amounts" not in x["snapshot"]
+        assert sha256_hex(canonical_json(x["snapshot"])) == x["content_hash"]

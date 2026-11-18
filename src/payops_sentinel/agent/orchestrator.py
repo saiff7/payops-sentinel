@@ -33,6 +33,7 @@ from payops_sentinel.agent.guardrails import (
     allowed_amounts,
     check_tool_catalog,
     find_evidence_ids,
+    scope_tools,
     to_ollama_tools,
     validate_draft,
     validate_tool_call,
@@ -79,9 +80,12 @@ class _Run:
     model_turns: int = 0
     draft_attempts: int = 0
     objective: str | None = None
+    host_results: dict[str, dict[str, Any]] = field(default_factory=dict)
+    prefetched: list[str] = field(default_factory=list)
     seen_evidence_ids: set[str] = field(default_factory=set)
     failures: Counter[str] = field(default_factory=Counter)
     batch_id: str | None = None
+    offered: frozenset[str] = frozenset()
 
     def record(self, **kwargs: Any) -> ToolCallRecord:
         rec = ToolCallRecord(sequence=len(self.calls) + 1, **kwargs)
@@ -93,6 +97,7 @@ class InvestigationOrchestrator:
     def __init__(self, model: ChatModel, limits: AgentLimits, conn: sqlite3.Connection) -> None:
         self.model = model
         self.limits = limits
+        self.prompt_version = prompts.prompt_version(limits.prefetch)
         self.conn = conn  # application (read-write) connection, used only to record the run
 
     # ------------------------------------------------------------------ public API
@@ -109,7 +114,11 @@ class InvestigationOrchestrator:
             model_version = await anyio.to_thread.run_sync(self.model.describe)
             exposed = check_tool_catalog(await self._list_tools(client))
             ctx = await self._ground_truth(client, run)
-            messages = await self._gather_evidence(client, run, to_ollama_tools(exposed))
+            if self.limits.prefetch:
+                await self._prefetch_rule(client, run)
+            offered = scope_tools(exposed, ctx)
+            run.offered = frozenset(t.name for t in offered)
+            messages = await self._gather_evidence(client, run, to_ollama_tools(offered))
             draft = await self._draft(run, messages, ctx)
         except _Stop as stop:
             return self._finish(run, model_version, stop.category, stop.detail)
@@ -144,23 +153,27 @@ class InvestigationOrchestrator:
         if evidence is None:
             raise _Stop(FailureCategory.MCP_UNAVAILABLE, "evidence could not be retrieved")
         run.batch_id = details.get("batch_id")
+        run.host_results = {"get_exception_details": details, "get_exception_evidence": evidence}
         return DraftContext(
             exception_id=run.exception_id,
             employee_ref=details.get("employee_ref"),
             evidence_ids=frozenset(details.get("evidence_ids", [])),
             allowed_amounts_cents=allowed_amounts(details, evidence),
+            rule_applies=details.get("rule_lookup") is not None,
         )
 
     async def _gather_evidence(
         self, client: Client, run: _Run, tools: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": prompts.SYSTEM_PROMPT},
+            {"role": "system", "content": prompts.system_prompt(self.limits.prefetch)},
             {
                 "role": "user",
                 "content": run.objective or prompts.investigation_request(run.exception_id),
             },
         ]
+        if self.limits.prefetch:
+            self._inject_prefetched(run, messages)
         for _ in range(self.limits.max_iterations):
             run.model_turns += 1
             reply = await self._chat(messages, tools=tools)
@@ -189,10 +202,43 @@ class InvestigationOrchestrator:
                 break
         return messages
 
+    @staticmethod
+    def _inject_prefetched(run: _Run, messages: list[dict[str, Any]]) -> None:
+        """Host-prefetch: give the model the host's details, evidence and (when one applies) the
+        plan rule as its first tool results, so mandatory reads cannot be skipped."""
+        order = ["get_exception_details", "get_exception_evidence", "lookup_plan_rule"]
+        names = [n for n in order if n in run.host_results]
+        exception_args = {"exception_id": run.exception_id}
+        rule_args = run.host_results["get_exception_details"].get("rule_lookup") or {}
+        args = {n: (rule_args if n == "lookup_plan_rule" else exception_args) for n in names}
+        messages.append(
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": n, "arguments": args[n]}} for n in names],
+            }
+        )
+        for name in names:
+            result = run.host_results[name]
+            messages.append(
+                {"role": "tool", "tool_name": name, "content": json.dumps(result, sort_keys=True)}
+            )
+            run.seen_evidence_ids |= find_evidence_ids(result)
+        run.prefetched = names
+
+    async def _prefetch_rule(self, client: Client, run: _Run) -> None:
+        """Fetch the plan rule the deterministic finding names, with exactly its arguments."""
+        rule_lookup = run.host_results["get_exception_details"].get("rule_lookup")
+        if not rule_lookup:
+            return  # no plan rule applies to this finding
+        result = await self._call(client, run, "host", "lookup_plan_rule", dict(rule_lookup))
+        if result is not None:  # on failure the model may still call the tool itself
+            run.host_results["lookup_plan_rule"] = result
+
     async def _model_tool_call(self, client: Client, run: _Run, name: str, arguments: Any) -> str:
         signature = f"{name}:{canonical_json(arguments)}"
         try:
-            validated = validate_tool_call(name, arguments)
+            validated = validate_tool_call(name, arguments, run.offered)
         except GuardrailViolation as v:
             run.record(
                 actor="model",
@@ -326,7 +372,7 @@ class InvestigationOrchestrator:
                 batch_id=run.batch_id,
                 agent_version=__version__,
                 model_version=model_version,
-                prompt_version=prompts.PROMPT_VERSION,
+                prompt_version=self.prompt_version,
             )
             for c in run.calls:
                 repo.insert_tool_event(
@@ -376,7 +422,7 @@ class InvestigationOrchestrator:
                     "draft_id": draft_ref[0] if draft_ref else None,
                     "content_hash": draft_ref[2] if draft_ref else None,
                     "model_version": model_version,
-                    "prompt_version": prompts.PROMPT_VERSION,
+                    "prompt_version": self.prompt_version,
                 },
             )
         log.info(
@@ -401,6 +447,7 @@ class InvestigationOrchestrator:
             draft_version=draft_ref[1] if draft_ref else None,
             content_hash=draft_ref[2] if draft_ref else None,
             tool_calls=run.calls,
+            prefetched_tools=run.prefetched,
             model_turns=run.model_turns,
             draft_attempts=run.draft_attempts,
             duration_ms=duration_ms,

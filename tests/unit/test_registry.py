@@ -62,12 +62,32 @@ def test_gate_passes_only_when_every_requirement_is_met(tmp_path):
 
 def test_manifest_versions_match_the_code():
     from payops_sentinel import __version__
-    from payops_sentinel.agent.prompts import PROMPT_VERSION
+    from payops_sentinel.agent.prompts import prompt_version
+    from payops_sentinel.config import load_settings
     from payops_sentinel.mcp_server.tools import TOOLS_VERSION
 
+    settings = load_settings()  # the shipped release configuration
     asset = load_agent_asset(GOV / "agent_manifest.toml")
     assert (asset.agent_version, asset.prompt_version, asset.tools_version) == (
         __version__,
-        PROMPT_VERSION,
+        prompt_version(settings.agent.prefetch),
         TOOLS_VERSION,
     )
+    assert asset.model == settings.agent.model
+    assert asset.retrieval_mode == (
+        "host-prefetch" if settings.agent.prefetch else "model-selected"
+    )
+
+
+def test_readiness_only_counts_evaluations_of_the_configured_agent():
+    from payops_sentinel.operations.registry import latest_matching_evaluation
+
+    runs = [  # newest first
+        {"evaluation_id": "E3", "model_version": "qwen3:14b@bdbd", "prompt_version": "1.2.0"},
+        {"evaluation_id": "E2", "model_version": "qwen3:8b@500a", "prompt_version": "1.2.0"},
+        {"evaluation_id": "E1", "model_version": "qwen3:8b@500a", "prompt_version": "1.1.0"},
+    ]
+    pick = latest_matching_evaluation
+    assert pick(runs, model="qwen3:8b", prompt_version="1.2.0")["evaluation_id"] == "E2"
+    assert pick(runs, model="qwen3:14b", prompt_version="1.2.0")["evaluation_id"] == "E3"
+    assert pick(runs, model="qwen3:8b", prompt_version="9.9.9") is None
