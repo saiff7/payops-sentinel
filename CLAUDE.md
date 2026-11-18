@@ -138,10 +138,10 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
   model; runs labelled `host-prefetch` / prompt `+prefetch`; prefetched calls credited only there.
   qwen3:8b + prefetch passes (case pass 29/30, p95 51 s). Tool-selection accuracy is not comparable
   across methodologies; compare case pass rate, draft quality, safety, latency.
-- **Release candidate 0.6.0 (committed, not tagged):** qwen3:8b + `prefetch = true` in config.toml;
+- **Release 0.6.0 (tagged `v0.6.0`, pushed to github.com/saiff7/payops-sentinel, CI green):** qwen3:8b + `prefetch = true` in config.toml;
   final validation 2 runs × 30/30 (EVAL-20261118T032820Z, …034429Z). Manifest: retrieval_mode
   host-prefetch, prompt `1.5.0+prefetch`, tools `1.2.0`, digest 500a1f067a9f (test enforces
-  manifest == shipped config). Tag awaits maintainer approval.
+  manifest == shipped config). Public repo; no LICENSE chosen yet.
 - History: tools 1.2.0 `display_amounts` + prompt 1.3.0 fixed EXC-000003 cents; 1.4.0 honoured
   requested context tools; 1.5.0 prefetches the applicable plan rule.
 - Task-scoped tools: `guardrails.scope_tools` hides `lookup_plan_rule` when no rule applies; calls to

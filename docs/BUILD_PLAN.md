@@ -170,7 +170,7 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
 - Added `[agent] enabled` kill switch, `payops backup` / `verify-db` (tested restore), version
   consistency test (manifest == code), runbook/config validation tests.
 - Not done (needs the maintainer): screenshots/video, LICENSE choice, real backup owner, GitHub
-  remote (CI has not yet run on GitHub), human rubric scoring of drafts.
+  remote (done for 0.6.0: CI green on the release commit), human rubric scoring of drafts.
 - Fix 1.2.0 (task-scoped tool exposure + prompt): tool selection 0.893 (25/28), failed tool calls 0,
   no regressions vs 1.1.0. Gate still FAILED by one case; remaining: 2 batch-context skips,
   2 fail-closed guardrail rejections.
@@ -195,5 +195,6 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
   between cases. Decision pending: prefetch the rule lookup too, accept in writing, or 14b+prefetch.
 - Prompt 1.5.0: host also prefetches the applicable plan rule. Final validation: 2 runs PASSED with
   30/30 each (EVAL-20261118T032820Z, …034429Z); all earlier failures fixed, including in replays.
-  Manifest evaluation_status = passed. Release candidate 0.6.0 committed; not tagged.
+  Manifest evaluation_status = passed. Release 0.6.0 committed and tagged `v0.6.0`; pushed to GitHub, CI green on the
+  release commit (Actions run 44325583932).
 
