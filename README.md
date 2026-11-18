@@ -57,8 +57,14 @@ Details: [docs/architecture.md](docs/architecture.md).
 
 ## 4. Demonstration
 
-- **Screenshots and a three-minute video:** to be recorded by the maintainer, following the script
-  in [§13](#13-demo-script-3-minutes). No screenshots are committed yet.
+Screenshots from the local app (release 0.6.0, live `qwen3:8b` run, synthetic data). A three-minute
+video can be recorded with the script in [§13](#13-demo-script-3-minutes).
+
+| | |
+|---|---|
+| ![Overview](docs/screenshots/1-overview.jpg) **Overview:** headline metrics and the workflow. | ![Batches](docs/screenshots/2-batches.jpg) **Batches:** deterministic reconciliation; raw invalid values are never stored. |
+| ![Investigation](docs/screenshots/3-investigation.jpg) **Exception and AI trace:** deterministic finding, then the tool calls behind the draft (prompt `1.5.0+prefetch`). | ![Review](docs/screenshots/4-review.jpg) **Human review:** the validated draft awaits a reviewer; edit, approve or reject. |
+| ![Governance](docs/screenshots/5-governance.jpg) **Governance:** asset registry and readiness gate (not operationally ready by design). | ![Evaluations](docs/screenshots/6-evaluations.jpg) **Evaluations:** release gate PASSED on the final 30-case runs. |
 
 ## 5. Technical stack
 
@@ -414,7 +420,7 @@ actions."*
 
 ## 14. License
 
-Project code: **no license chosen yet**; the maintainer must add a `LICENSE` file before
-publishing. Dependencies: Python (PSF), MCP Python SDK (MIT), Ollama and
+Project code: [MIT](LICENSE). Synthetic data, evaluation reports and documentation are covered by
+the same licence. Dependencies: Python (PSF), MCP Python SDK (MIT), Ollama and
 ollama-python (MIT), Qwen3 weights (Apache-2.0), Streamlit (Apache-2.0), Pydantic, pytest and
 Ruff (MIT), uv (MIT/Apache-2.0).

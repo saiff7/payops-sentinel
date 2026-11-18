@@ -28,7 +28,7 @@ Review service (reviewer principal only) → versioned drafts → approvals → 
 | `src/payops_sentinel/agent/` | Ollama client, orchestrator loop, prompts, output schemas, guardrails |
 | `src/payops_sentinel/review/` | Authorisation, draft versions, approve/reject, audit chain, artifacts |
 | `src/payops_sentinel/operations/` | Telemetry, asset registry, evaluations |
-| `src/payops_sentinel/ui/` | Streamlit app + 3 pages. Calls services only, never SQL. |
+| `src/payops_sentinel/ui/` | Streamlit entry (`app.py`, navigation) + Overview + 3 pages. Calls services only, never SQL. |
 | `governance/` | TOML manifests: agent asset, tool permissions, data classification |
 | `data/synthetic/` | Generated synthetic fixtures (committed). `data/uploads`, `data/artifacts`, `*.db` are git-ignored. |
 | `evals/`, `tests/` | Golden cases; unit/integration/mcp_server/agent/security/review/evals tests |
@@ -141,7 +141,7 @@ Synthetic data is generated, never hand-edited: change `synthetic.py`, then `pay
 - **Release 0.6.0 (tagged `v0.6.0`, pushed to github.com/saiff7/payops-sentinel, CI green):** qwen3:8b + `prefetch = true` in config.toml;
   final validation 2 runs × 30/30 (EVAL-20261118T032820Z, …034429Z). Manifest: retrieval_mode
   host-prefetch, prompt `1.5.0+prefetch`, tools `1.2.0`, digest 500a1f067a9f (test enforces
-  manifest == shipped config). Public repo; no LICENSE chosen yet.
+  manifest == shipped config). Public repo; MIT licence.
 - History: tools 1.2.0 `display_amounts` + prompt 1.3.0 fixed EXC-000003 cents; 1.4.0 honoured
   requested context tools; 1.5.0 prefetches the applicable plan rule.
 - Task-scoped tools: `guardrails.scope_tools` hides `lookup_plan_rule` when no rule applies; calls to

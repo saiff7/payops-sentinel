@@ -169,7 +169,7 @@ Dev: `pytest`, `ruff`. Nothing else unless a later phase documents the need.
   Gate still FAILED → manifest `evaluation_status` records the failure; release remains blocked.
 - Added `[agent] enabled` kill switch, `payops backup` / `verify-db` (tested restore), version
   consistency test (manifest == code), runbook/config validation tests.
-- Not done (needs the maintainer): screenshots/video, LICENSE choice, real backup owner, GitHub
+- Not done (needs the maintainer): screenshots/video (screenshots added for 0.6.0), LICENSE choice (MIT for 0.6.0), real backup owner, GitHub
   remote (done for 0.6.0: CI green on the release commit), human rubric scoring of drafts.
 - Fix 1.2.0 (task-scoped tool exposure + prompt): tool selection 0.893 (25/28), failed tool calls 0,
   no regressions vs 1.1.0. Gate still FAILED by one case; remaining: 2 batch-context skips,

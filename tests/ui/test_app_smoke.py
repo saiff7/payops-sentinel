@@ -8,7 +8,13 @@ from streamlit.testing.v1 import AppTest
 from payops_sentinel.config import PROJECT_ROOT
 
 UI = PROJECT_ROOT / "src" / "payops_sentinel" / "ui"
-PAGES = ["app.py", "pages/1_Batches.py", "pages/2_Exceptions.py", "pages/3_Governance.py"]
+PAGES = [
+    "app.py",
+    "overview.py",
+    "pages/1_Batches.py",
+    "pages/2_Exceptions.py",
+    "pages/3_Governance.py",
+]
 
 
 @pytest.fixture
@@ -44,7 +50,7 @@ def test_operator_processes_demo_batch_then_pages_render(ui_config):
     next(b for b in at.button if b.label == "Process demo file with exceptions").click().run()
     assert not at.exception
     assert any("BATCH-000001 processed" in s.value for s in at.success)
-    for page in PAGES[2:]:
+    for page in PAGES[3:]:
         assert not _run(page, principal_id="reviewer.demo").exception
 
 

@@ -82,11 +82,11 @@ with db() as conn:
 
 st.divider()
 st.subheader(f"{exception_id} · {details['exception_type']}")
-m = st.columns(4)
+m = st.columns([1, 1, 1, 2])
 m[0].metric("Employee reference", details["employee_ref"] or "malformed")
 m[1].metric("Expected (deterministic)", money(details["expected_cents"]))
 m[2].metric("Reported", money(details["actual_cents"]))
-m[3].metric("Status", details["status"])
+m[3].metric("Status", details["status"].replace("_", " "))
 st.write(f"**Finding** ({details['reason_code']}): {details['reason']}")
 st.caption(
     f"Source row {details['source_row_number']} · pay period "
@@ -148,7 +148,8 @@ if runs:
                 )
                 st.caption(
                     "actor=model: chosen by Qwen3 and validated by the host before "
-                    "execution · actor=host: ground-truth reads used to verify the draft"
+                    "execution · actor=host: ground-truth reads used to verify the draft "
+                    "(in host-prefetch mode also given to the model as its first results)"
                 )
 else:
     st.caption("No investigation has run for this exception yet.")
